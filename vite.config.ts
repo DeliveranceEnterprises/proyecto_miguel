@@ -8,6 +8,13 @@ export default defineConfig({
   server: {
     port: 5174,
     host: true,
+    watch: {
+      usePolling: true,
+      interval: 100, // Comprueba cambios cada 100ms
+    },
+    hmr: {
+      clientPort: 5174, // Asegura que el cliente busque el HMR en el puerto correcto
+    },
     proxy: {
       "/api": {
         target: process.env.VITE_API_URL || "http://127.0.0.1:8000",

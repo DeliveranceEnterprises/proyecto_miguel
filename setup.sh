@@ -62,10 +62,10 @@ check_docker() {
     fi
 }
 
-# Function to check if docker-compose is available
+# Function to check if docker compose is available
 check_docker_compose() {
-    if ! command -v docker-compose > /dev/null 2>&1; then
-        print_error "docker-compose is not installed. Please install it and try again."
+    if ! command -v docker compose > /dev/null 2>&1; then
+        print_error "docker compose is not installed. Please install it and try again."
         exit 1
     fi
 }
@@ -85,39 +85,39 @@ EOF
 # Function to start development server
 start_development() {
     print_status "Starting development server with hot reload..."
-    docker-compose --profile dev up --build
+    docker compose --profile dev up --build
 }
 
 # Function to start production server
 start_production() {
     print_status "Starting production server with Nginx..."
-    docker-compose --profile prod up --build
+    docker compose --profile prod up --build
 }
 
 # Function to start Vite server
 start_vite() {
     print_status "Starting Vite development server (fastest option)..."
-    docker-compose --profile vite up --build
+    docker compose --profile vite up --build
 }
 
 # Function to build production image
 build_production() {
     print_status "Building production image..."
-    docker-compose --profile prod build
+    docker compose --profile prod build
     print_success "Production image built successfully"
 }
 
 # Function to stop services
 stop_services() {
     print_status "Stopping all services..."
-    docker-compose down
+    docker compose down
     print_success "All services stopped"
 }
 
 # Function to show logs
 show_logs() {
     print_status "Showing logs from running containers..."
-    docker-compose logs -f
+    docker compose logs -f
 }
 
 # Function to clean up
@@ -126,7 +126,7 @@ clean_up() {
     read -r response
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         print_status "Cleaning up Docker resources..."
-        docker-compose down --volumes --remove-orphans
+        docker compose down --volumes --remove-orphans
         docker system prune -f
         print_success "Cleanup completed"
     else

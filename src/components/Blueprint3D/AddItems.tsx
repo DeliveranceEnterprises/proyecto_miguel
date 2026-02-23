@@ -57,6 +57,9 @@ const itemCategories = [
     name: 'Floor Coverings',
     items: [
       { name: 'Blue Rug', image: 'plan3d/models/thumbnails/thumbnail_cb-blue-block60x96.png', model: 'plan3d/models/js/cb-blue-block-60x96.js', type: 8 },
+      { name: 'Alfombra', image: 'plan3d/models/thumbnails/robot.png', model: 'plan3d/models/js/robot_model.js', type: 8 },
+      { name: 'Alfombra Personalizado', image: 'plan3d/models/thumbnails/personalizado.png', model: 'plan3d/models/js/robot_model.js', type: 8 },
+
     ]
   }
 ];

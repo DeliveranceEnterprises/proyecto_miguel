@@ -704,17 +704,8 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
           console.log('✅ Blueprint3D controller enabled set to:', enabled);
           console.log('🔍 Controller object:', controller);
           
-          // Also control the viewer element's pointer events
-          const viewerElement = document.getElementById('viewer');
-          if (viewerElement) {
-            if (enabled) {
-              viewerElement.style.pointerEvents = 'auto';
-              console.log('✅ Viewer pointer events enabled');
-            } else {
-              viewerElement.style.pointerEvents = 'none';
-              console.log('✅ Viewer pointer events disabled');
-            }
-          }
+          // ¡Hemos eliminado toda la lógica de viewerElement.style.pointerEvents!
+          // Con 'controller.enabled = enabled' es suficiente.
         } else {
           console.error('❌ Controller is null after getController()');
         }
