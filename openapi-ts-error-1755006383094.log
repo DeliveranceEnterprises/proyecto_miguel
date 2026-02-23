@@ -1,0 +1,9 @@
+"/Users/emunera/Development/deliverance_dashboard/frontend/openapi.json" is not a valid JSON Schema
+SyntaxError: "/Users/emunera/Development/deliverance_dashboard/frontend/openapi.json" is not a valid JSON Schema
+    at $RefParser.parse (/Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@apidevtools/json-schema-ref-parser/dist/lib/index.js:129:33)
+    at async $RefParser.resolve (/Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@apidevtools/json-schema-ref-parser/dist/lib/index.js:149:13)
+    at async $RefParser.bundle (/Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@apidevtools/json-schema-ref-parser/dist/lib/index.js:169:13)
+    at async Jl (/Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@hey-api/openapi-ts/dist/index.cjs:1329:7647)
+    at async /Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@hey-api/openapi-ts/dist/index.cjs:1329:9134
+    at async Yl (/Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@hey-api/openapi-ts/dist/index.cjs:1329:9633)
+    at async start (/Users/emunera/Development/deliverance_dashboard/frontend/node_modules/@hey-api/openapi-ts/bin/index.cjs:86:5)
