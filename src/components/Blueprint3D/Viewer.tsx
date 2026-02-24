@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiSave, FiCodepen, FiPlus, FiEdit, FiX } from 'react-icons/fi';
+import { FiSave, FiCodepen, FiPlus, FiEdit, FiX, FiTrash2 } from 'react-icons/fi';
 import { useBlueprint3D } from './Blueprint3DApp';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 import { ScenesService } from '../../client';
@@ -186,6 +186,59 @@ const Viewer: React.FC = () => {
     }
   };
 
+
+  // FUncion para eliminar una escena
+  const handleDeleteScene = async () => {
+    if (!currentUID) {
+      showToast('Error', 'No hay una escena seleccionada para eliminar.', 'error');
+      return;
+    }
+    const confirmDelete = window.confirm('¿Estás seguro de que quieres eliminar esta escena permanentemente? Esta acción no se puede deshacer.');
+    if (confirmDelete) {
+      try {
+        console.log('Deleting scene:', currentUID);
+  
+        // Llamada a la API para borrar
+        await ScenesService.deleteScene({ sceneId: currentUID });
+
+        showToast(
+          'Scene Deleted',
+          'La escena ha sido eliminada correctamente.',
+          'success'
+        );
+
+        // Limpiar el UID actual
+        onUIDChange(''); 
+
+        // Limpiar la vista 3D (Opcional, pero recomendado para que no se quede la casa "fantasma")
+        if (blueprint3d?.model) {
+           // Esto carga una escena vacía
+           blueprint3d.model.loadSerialized(JSON.stringify({
+             floorplan: { corners: {}, walls: [] },
+             items: []
+           })); 
+        }
+
+        // Importante: Notificar al padre para que actualice la lista lateral
+        // Si onSceneSaved refresca la lista, podemos usarlo pasando null o un flag especial
+        // O idealmente, deberías tener un callback 'onSceneDeleted'.
+        // Por ahora, intentaremos usar onSceneSaved para forzar un refresco si tu lógica lo soporta
+        if (onSceneSaved) {
+            onSceneSaved(currentUID); // Pasamos el UID borrado para que el padre sepa qué quitar
+        }
+
+      } catch (error) {
+        console.error('Error deleting scene:', error);
+        showToast(
+          'Delete Failed',
+          'No se pudo eliminar la escena. Inténtalo de nuevo.',
+          'error'
+        );
+      }
+    }
+  };
+
+
   const handleEnterEditMode = () => {
     setIsEditingMode(true);
     // Notify parent component about editing mode change
@@ -258,36 +311,71 @@ const Viewer: React.FC = () => {
       {/* Main Controls */}
       <div id="main-controls" style={{ display: 'flex', gap: '8px', padding: '12px' }}>
         {!isEditingMode ? (
-          // Show only "Edit Scene" button when not in editing mode
-          <button 
-            onClick={handleEnterEditMode}
-            style={{
-              backgroundColor: '#596A6E',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 16px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#4A5B5F';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#596A6E';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            }}
-          >
-            <FiEdit style={{ marginRight: '6px' }} /> Edit Scene
-          </button>
+          // AQUI ESTAN LOS CAMBIOS PRINCIPALES
+          <>
+            <button 
+              onClick={handleEnterEditMode}
+              style={{
+                backgroundColor: '#596A6E',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#4A5B5F';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#596A6E';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <FiEdit style={{ marginRight: '6px' }} /> Edit Scene
+            </button>
+
+            {/* Nuevo Botón de Eliminar (Solo visible si hay una escena cargada/currentUID) */}
+            {currentUID && (
+              <button 
+                onClick={handleDeleteScene}
+                style={{
+                  backgroundColor: '#E53E3E', // Rojo
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#C53030';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#E53E3E';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                }}
+              >
+                <FiTrash2 style={{ marginRight: '6px' }} /> Delete Scene
+              </button>
+            )}
+          </>
         ) : (
           // Show all editing buttons when in editing mode
           <>
