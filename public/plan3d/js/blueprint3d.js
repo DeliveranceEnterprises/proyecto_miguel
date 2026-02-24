@@ -533,9 +533,10 @@ var BP3D;
                 var on = this.hover || this.selected;
                 this.highlighted = on;
                 var hex = on ? this.emissiveColor : 0x000000;
-                this.material.materials.forEach(function (material) {
-                    // TODO_Ekki emissive doesn't exist anymore?
-                    material.emissive.setHex(hex);
+                // Soporta tanto MeshFaceMaterial (JSON legacy) como materiales simples (GLB)
+                var mats = (this.material && this.material.materials) ? this.material.materials : (this.material ? [this.material] : []);
+                mats.forEach(function (mat) {
+                    if (mat && mat.emissive) mat.emissive.setHex(hex);
                 });
             };
             /** */
@@ -1197,7 +1198,7 @@ var BP3D;
              */
             HalfEdge.prototype.corners = function () {
                 return [this.interiorStart(), this.interiorEnd(),
-                    this.exteriorEnd(), this.exteriorStart()];
+                this.exteriorEnd(), this.exteriorStart()];
             };
             /**
              * Gets CCW angle from v1 to v2
@@ -2495,18 +2496,86 @@ var BP3D;
             Scene.prototype.addItem = function (itemType, fileName, metadata, position, rotation, scale, fixed) {
                 itemType = itemType || 1;
                 var scope = this;
-                var loaderCallback = function (geometry, materials) {
-                    var item = new (BP3D.Items.Factory.getClass(itemType))(scope.model, metadata, geometry, new THREE.MeshFaceMaterial(materials), position, rotation, scale);
-                    item.fixed = fixed || false;
-                    scope.items.push(item);
-                    scope.add(item);
-                    item.initObject();
-                    scope.itemLoadedCallbacks.fire(item);
-                };
-                this.itemLoadingCallbacks.fire();
-                this.loader.load(fileName, loaderCallback, undefined // TODO_Ekki 
-                );
-            };
+
+                // Detectar si es un archivo GLB o GLTF
+                var isGLB = fileName.toLowerCase().match(/\.(glb|gltf)$/);
+
+                if (isGLB) {
+                    // --- LÓGICA NUEVA PARA GLB ---
+                    var loader = new THREE.GLTFLoader();
+                    this.itemLoadingCallbacks.fire();
+
+                    loader.load(fileName, function (gltf) {
+                        var model = gltf.scene;
+
+                        // 1. Calcular el tamaño del modelo GLB para crear un contenedor físico correcto
+                        var box = new THREE.Box3().setFromObject(model);
+                        var size = new THREE.Vector3();
+                        size.subVectors(box.max, box.min);
+
+                        var center = new THREE.Vector3();
+                        center.addVectors(box.min, box.max).multiplyScalar(0.5);// Para three.js antiguos: box.max.clone().add(box.min).multiplyScalar(0.5);
+
+                        // Nota: Si te da error en .size() o .center(), usa las alternativas comentadas arriba
+                        // dependiendo de cuán vieja sea tu versión de Three.js.
+
+                        // 2. Centrar el modelo visualmente dentro del contenedor
+                        model.position.x += (model.position.x - center.x);
+                        model.position.y += (model.position.y - center.y);
+                        model.position.z += (model.position.z - center.z);
+
+                        // 3. Activar sombras en el modelo visual
+                        model.traverse(function (child) {
+                            if (child.isMesh) {
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                                // Opcional: Ajustar materiales si se ven muy oscuros
+                                // if (child.material) child.material.emissive = new THREE.Color(0x222222);
+                            }
+                        });
+
+                        // 4. Crear geometría y material "Dummy" para satisfacer a la clase Item de Blueprint3D
+                        // Creamos una caja invisible del tamaño del modelo
+                        var geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+                        var material = new THREE.MeshBasicMaterial({
+                            visible: false,
+                            transparent: true,
+                            opacity: 0
+                        });
+
+                        // 5. Instanciar la clase Item (que hereda de Mesh)
+                        var ItemClass = BP3D.Items.Factory.getClass(itemType);
+                        var item = new ItemClass(scope.model, metadata, geometry, material, position, rotation, scale);
+
+                        item.fixed = fixed || false;
+
+                        // 6. Añadir el modelo GLB visual como HIJO del Item lógico
+                        item.add(model);
+
+                        // 7. Añadir a la escena y notificar
+                        scope.items.push(item);
+                        scope.add(item);
+                        item.initObject();
+                        scope.itemLoadedCallbacks.fire(item);
+
+                    }, undefined, function (error) {
+                        console.error("Error cargando GLB:", error);
+                    });
+
+                } else {
+                    // --- LÓGICA ORIGINAL PARA JS/JSON (Legacy) ---
+                    var loaderCallback = function (geometry, materials) {
+                        var item = new (BP3D.Items.Factory.getClass(itemType))(scope.model, metadata, geometry, new THREE.MeshFaceMaterial(materials), position, rotation, scale);
+                        item.fixed = fixed || false;
+                        scope.items.push(item);
+                        scope.add(item);
+                        item.initObject();
+                        scope.itemLoadedCallbacks.fire(item);
+                    };
+                    this.itemLoadingCallbacks.fire();
+                    this.loader.load(fileName, loaderCallback, undefined);
+                }
+            };;
             return Scene;
         })();
         Model.Scene = Scene;

@@ -61,7 +61,14 @@ const itemCategories = [
       { name: 'Alfombra Personalizado', image: 'plan3d/models/thumbnails/personalizado.png', model: 'plan3d/models/js/robot_model.js', type: 8 },
 
     ]
+  },
+  {
+    name: 'Objeto glb',
+    items: [
+      { name: 'Baúl', image: 'plan3d/models/thumbnails/baul_image.png', model: 'plan3d/models/js/baul.glb', type: 1 },
+    ]
   }
+
 ];
 
 const AddItems: React.FC = () => {
@@ -70,19 +77,22 @@ const AddItems: React.FC = () => {
   const handleAddItem = (item: any) => {
     if (blueprint3d?.model?.scene) {
       try {
+
+        const isGLB = item.model.toLowerCase().endsWith('.glb');
         // Add item to the scene with metadata
         const metadata = {
           itemName: item.name,
           resizable: true,
           modelUrl: item.model,
-          itemType: item.type
+          itemType: item.type,
+          format: isGLB ? 'glb' : 'json'
         };
-        
+
         blueprint3d.model.scene.addItem(item.type, item.model, metadata);
-        
+
         // Switch back to design view
         onStateChange('DESIGN');
-        
+
         console.log(`Added item: ${item.name}`);
       } catch (error) {
         console.error('Failed to add item:', error);
@@ -94,7 +104,7 @@ const AddItems: React.FC = () => {
     <div>
       {/* Return Button */}
       <div style={{ padding: '12px', borderBottom: '1px solid #E2E8F0' }}>
-        <button 
+        <button
           onClick={() => onStateChange('DESIGN')}
           style={{
             backgroundColor: '#596A6E',
@@ -124,14 +134,14 @@ const AddItems: React.FC = () => {
           <FiArrowLeft style={{ marginRight: '6px' }} /> Return to Design
         </button>
       </div>
-      
+
       {/* Items Grid */}
       <div className="row" id="items-wrapper">
-        {itemCategories.flatMap(category => 
+        {itemCategories.flatMap(category =>
           category.items.map(item => (
             <div key={item.name} className="col-sm-4">
-              <a 
-                className="thumbnail add-item" 
+              <a
+                className="thumbnail add-item"
                 data-model-name={item.name}
                 data-model-url={item.model}
                 data-model-type={item.type}
