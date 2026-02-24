@@ -12,7 +12,7 @@ import {
   Input,
   useToast,
 } from "@chakra-ui/react";
-import { FiMap, FiPlus, FiEdit2, FiCheck, FiX } from "react-icons/fi";
+import { FiMap, FiPlus, FiEdit2, FiCheck, FiX, FiTrash2 } from "react-icons/fi";
 import { OrganizationsService, ScenesService } from "../../client";
 import type { ScenePublic } from "../../client/types.gen";
 import { useOrganizationContext } from "../../hooks/useOrganizationContext";
@@ -52,6 +52,9 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   const toast = useToast();
@@ -161,6 +164,56 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
     }
   };
 
+  const handleDeleteScene = async (sceneId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita que se seleccione la escena al hacer clic en borrar
+    
+    if (!window.confirm("¿Estás seguro de que quieres eliminar esta escena? Esta acción no se puede deshacer.")) {
+        return;
+    }
+
+    setDeletingId(sceneId);
+
+    try {
+        // Llamada a la API para borrar
+        await ScenesService.deleteScene({ sceneId });
+
+        // Actualizar el estado local quitando la escena borrada
+        const newScenes = scenes.filter((s) => s.id !== sceneId);
+        setScenes(newScenes);
+
+        toast({
+            title: "Escena eliminada",
+            status: "success",
+            duration: 2000,
+            isClosable: true,
+            position: "top-right",
+        });
+
+        if (selectedId === sceneId) {
+            if (newScenes.length > 0) {
+                // Si quedan escenas, seleccionamos la primera
+                setSelectedId(newScenes[0].id);
+            } else {
+                // Si no quedan escenas, deseleccionamos (null)
+                setSelectedId(null);
+            }
+        }
+
+    } catch (error) {
+        console.error("Error deleting scene:", error);
+        toast({
+            title: "Error al eliminar",
+            description: "No se pudo eliminar la escena.",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+            position: "top-right",
+        });
+    } finally {
+        setDeletingId(null);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       saveRename();
@@ -225,6 +278,7 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
               scenes.map((scene) => {
                 const isSelected = scene.id === selectedId;
                 const isEditing = scene.id === editingId;
+                const isDeleting = scene.id === deletingId;
 
                 return (
                   <Flex
@@ -317,20 +371,36 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
                         />
                       </Flex>
                     ) : (
-                      <IconButton
-                        aria-label="Renombrar escena"
-                        icon={<Icon as={FiEdit2} />}
-                        size="xs"
-                        variant="ghost"
-                        color={isSelected ? "whiteAlpha.800" : "gray.400"}
-                        _hover={{ color: isSelected ? "white" : "gray.600", bg: isSelected ? "whiteAlpha.200" : "gray.200" }}
-                        opacity={0}
-                        _groupHover={{ opacity: 1 }}
-                        transition="opacity 0.15s"
-                        ml={2}
-                        flexShrink={0}
-                        onClick={(e) => startEditing(scene, e)}
-                      />
+                      <Flex ml={2} gap={1} flexShrink={0}>
+                        <IconButton
+                          aria-label="Renombrar escena"
+                          icon={<Icon as={FiEdit2} />}
+                          size="xs"
+                          variant="ghost"
+                          color={isSelected ? "whiteAlpha.800" : "gray.400"}
+                          _hover={{ color: isSelected ? "white" : "gray.600", bg: isSelected ? "whiteAlpha.200" : "gray.200" }}
+                          opacity={0}
+                          _groupHover={{ opacity: 1 }}
+                          transition="opacity 0.15s"
+                          ml={2}
+                          flexShrink={0}
+                          onClick={(e) => startEditing(scene, e)}
+                        />
+                        <IconButton
+                          aria-label="Eliminar escena"
+                          icon={<Icon as={FiTrash2} />}
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          color={isSelected ? "whiteAlpha.900" : "red.400"}
+                          _hover={{ color: "red.500", bg: "red.100" }}
+                          opacity={0}
+                          _groupHover={{ opacity: 1 }}
+                          transition="opacity 0.15s"
+                          isLoading={isDeleting}
+                          onClick={(e) => handleDeleteScene(scene.id, e)}
+                        />
+                      </Flex>
                     )}
                   </Flex>
                 );
