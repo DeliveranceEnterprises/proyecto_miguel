@@ -17,10 +17,11 @@ import { OrganizationsService, ScenesService } from "../../client";
 import type { ScenePublic } from "../../client/types.gen";
 import { useOrganizationContext } from "../../hooks/useOrganizationContext";
 
+
 interface ScenesListProps {
   title: string;
   selectedId: string | null;
-  setSelectedId: (id: string) => void | Promise<void>;
+  setSelectedId: (id: string | null) => void | Promise<void>;
   onCreateNewPlan?: () => void;
 }
 
@@ -43,7 +44,7 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
   const subTextColor = useColorModeValue("gray.600", "gray.300");
   const borderColor = useColorModeValue("gray.200", "gray.600");
   const scrollbarThumbColor = useColorModeValue("#CBD5E0", "#4A5568");
-  const scrollbarThumbHoverColor = useColorModeValue("#A0AEC0", "#2D3748");
+  const scrollbarThumbHoverColor = useColorModeValue("#A0AEC0", "#2D3748");  
 
   const [scenes, setScenes] = useState<SceneItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -164,8 +165,11 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
     }
   };
 
+  // Asegúrate de tener el ID de la escena actual en una variable, por ejemplo 'currentUID'
+  // Si usas tokens de autenticación, recuerda incluirlos en los headers.
+
   const handleDeleteScene = async (sceneId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Evita que se seleccione la escena al hacer clic en borrar
+    e.stopPropagation(); 
     
     if (!window.confirm("¿Estás seguro de que quieres eliminar esta escena? Esta acción no se puede deshacer.")) {
         return;
@@ -174,10 +178,9 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
     setDeletingId(sceneId);
 
     try {
-        // Llamada a la API para borrar
-        await ScenesService.deleteScene({ sceneId });
 
-        // Actualizar el estado local quitando la escena borrada
+        await ScenesService.deleteScene({ sceneId });
+        // Actualizamos la lista visualmente
         const newScenes = scenes.filter((s) => s.id !== sceneId);
         setScenes(newScenes);
 
@@ -189,12 +192,11 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
             position: "top-right",
         });
 
+        // 3. Lógica de selección inteligente
         if (selectedId === sceneId) {
             if (newScenes.length > 0) {
-                // Si quedan escenas, seleccionamos la primera
                 setSelectedId(newScenes[0].id);
             } else {
-                // Si no quedan escenas, deseleccionamos (null)
                 setSelectedId(null);
             }
         }
@@ -203,7 +205,7 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
         console.error("Error deleting scene:", error);
         toast({
             title: "Error al eliminar",
-            description: "No se pudo eliminar la escena.",
+            description: "No se pudo conectar con la API o hubo un error.",
             status: "error",
             duration: 3000,
             isClosable: true,
