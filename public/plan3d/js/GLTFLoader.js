@@ -182,8 +182,12 @@
                 return;
             }
 
-            // Construir materiales
-            var materials = scope._buildMaterials(gltf);
+            // Extraer imágenes embebidas del chunk BIN → URLs de objeto (Blob)
+            var images = scope._buildImages(gltf, binChunk);
+            // Construir objetos THREE.Texture a partir de esas imágenes
+            var textures = scope._buildTextures(gltf, images);
+            // Construir materiales con texturas
+            var materials = scope._buildMaterials(gltf, textures);
 
             // Construir mallas
             var meshObjects = scope._buildMeshes(gltf, binChunk, materials);
@@ -199,8 +203,8 @@
                 if (nodeDef.matrix) {
                     var m = nodeDef.matrix;
                     obj.matrix.set(
-                        m[0], m[4], m[8],  m[12],
-                        m[1], m[5], m[9],  m[13],
+                        m[0], m[4], m[8], m[12],
+                        m[1], m[5], m[9], m[13],
                         m[2], m[6], m[10], m[14],
                         m[3], m[7], m[11], m[15]
                     );
@@ -245,10 +249,73 @@
         },
 
         // ---------------------------------------------------------------
-        // Construir materiales desde gltf.materials[]
+        // Extraer imágenes embebidas del chunk BIN del GLB
         // ---------------------------------------------------------------
-        _buildMaterials: function (gltf) {
+        _buildImages: function (gltf, binChunk) {
+            var images = [];
+            if (!gltf.images) return images;
+
+            gltf.images.forEach(function (imageDef) {
+                if (imageDef.bufferView !== undefined && binChunk) {
+                    var bufferView = gltf.bufferViews[imageDef.bufferView];
+                    var byteOffset = bufferView.byteOffset || 0;
+                    var byteLength = bufferView.byteLength;
+                    var mimeType = imageDef.mimeType || 'image/png';
+                    var imageBytes = new Uint8Array(binChunk, byteOffset, byteLength);
+                    // Crear Blob URL para usarlo con THREE.Texture / Image
+                    try {
+                        var blob = new Blob([imageBytes], { type: mimeType });
+                        images.push(URL.createObjectURL(blob));
+                    } catch (e) {
+                        console.warn('GLTFLoader: no se pudo crear Blob para imagen embebida', e);
+                        images.push(null);
+                    }
+                } else if (imageDef.uri) {
+                    // URI externa (base64 o ruta relativa)
+                    images.push(imageDef.uri);
+                } else {
+                    images.push(null);
+                }
+            });
+
+            return images;
+        },
+
+        // ---------------------------------------------------------------
+        // Construir THREE.Texture a partir de las URLs de imagen
+        // ---------------------------------------------------------------
+        _buildTextures: function (gltf, images) {
+            var textures = [];
+            if (!gltf.textures) return textures;
+
+            gltf.textures.forEach(function (textureDef) {
+                var sourceIndex = textureDef.source;
+                if (sourceIndex !== undefined && images[sourceIndex]) {
+                    var texture = new THREE.Texture();
+                    texture.flipY = false; // glTF usa UV con Y invertido respecto a WebGL
+                    var img = new Image();
+                    img.onload = (function (tex) {
+                        return function () {
+                            tex.image = this;
+                            tex.needsUpdate = true;
+                        };
+                    })(texture);
+                    img.src = images[sourceIndex];
+                    textures.push(texture);
+                } else {
+                    textures.push(null);
+                }
+            });
+
+            return textures;
+        },
+
+        // ---------------------------------------------------------------
+        // Construir materiales desde gltf.materials[] usando las texturas
+        // ---------------------------------------------------------------
+        _buildMaterials: function (gltf, textures) {
             var materials = [];
+            textures = textures || [];
             if (!gltf.materials) return materials;
 
             gltf.materials.forEach(function (matDef) {
@@ -264,8 +331,20 @@
                 var color = new THREE.Color(1, 1, 1);
                 if (matDef.pbrMetallicRoughness) {
                     var pbr = matDef.pbrMetallicRoughness;
+
+                    // Color base sólido
                     if (pbr.baseColorFactor) {
                         color.setRGB(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]);
+                    }
+
+                    // Textura difusa (baseColorTexture)
+                    if (pbr.baseColorTexture !== undefined && textures.length > 0) {
+                        var tex = textures[pbr.baseColorTexture.index];
+                        if (tex) {
+                            params.map = tex;
+                            // Si hay textura, convertimos el color en modulación (blanco = sin cambio)
+                            color.set(0xffffff);
+                        }
                     }
                 }
 

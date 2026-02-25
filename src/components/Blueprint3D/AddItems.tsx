@@ -66,6 +66,7 @@ const itemCategories = [
     name: 'Objeto glb',
     items: [
       { name: 'Baúl', image: 'plan3d/models/thumbnails/baul_image.png', model: 'plan3d/models/js/baul.glb', type: 1 },
+      { name: 'Robot', image: 'plan3d/models/thumbnails/robot.png', model: 'plan3d/models/js/robot_3D.glb', type: 1 },
     ]
   }
 

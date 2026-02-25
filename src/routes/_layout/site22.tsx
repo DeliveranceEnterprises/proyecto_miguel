@@ -33,7 +33,7 @@ import useCustomToast from "../../hooks/useCustomToast";
 import { useState, useRef, useEffect } from "react";
 import { FiTrash2, FiX } from "react-icons/fi";
 
-export const Route = createFileRoute("/_layout/site")({
+export const Route = createFileRoute("/_layout/site22")({
   component: Site,
 });
 

@@ -2505,62 +2505,54 @@ var BP3D;
                     var loader = new THREE.GLTFLoader();
                     this.itemLoadingCallbacks.fire();
 
-                    loader.load(fileName, function (gltf) {
+                    loader.load(fileName, function(gltf) {
                         var model = gltf.scene;
 
-                        // 1. Calcular el tamaño del modelo GLB para crear un contenedor físico correcto
+                        // Auto-scale: GLB is in metres, Blueprint3D uses centimetres
+                        // Compute raw bounding box first
+                        var rawBox = new THREE.Box3().setFromObject(model);
+                        var rawSize = new THREE.Vector3();
+                        rawSize.subVectors(rawBox.max, rawBox.min);
+                        
+                        // If model is tiny (<5 units), it's probably in metres → scale ×100
+                        var autoScale = (rawSize.length() < 5) ? 100 : 1;
+                        model.scale.set(autoScale, autoScale, autoScale);
+
+                        // Re-compute after scaling
                         var box = new THREE.Box3().setFromObject(model);
                         var size = new THREE.Vector3();
                         size.subVectors(box.max, box.min);
-
                         var center = new THREE.Vector3();
-                        center.addVectors(box.min, box.max).multiplyScalar(0.5);// Para three.js antiguos: box.max.clone().add(box.min).multiplyScalar(0.5);
+                        center.addVectors(box.min, box.max).multiplyScalar(0.5);
 
-                        // Nota: Si te da error en .size() o .center(), usa las alternativas comentadas arriba
-                        // dependiendo de cuán vieja sea tu versión de Three.js.
+                        // Centre model visually (offset it so its geometric center is at origin)
+                        model.position.set(-center.x, -center.y, -center.z);
 
-                        // 2. Centrar el modelo visualmente dentro del contenedor
-                        model.position.x += (model.position.x - center.x);
-                        model.position.y += (model.position.y - center.y);
-                        model.position.z += (model.position.z - center.z);
-
-                        // 3. Activar sombras en el modelo visual
-                        model.traverse(function (child) {
-                            if (child.isMesh) {
-                                child.castShadow = true;
-                                child.receiveShadow = true;
-                                // Opcional: Ajustar materiales si se ven muy oscuros
-                                // if (child.material) child.material.emissive = new THREE.Color(0x222222);
+                        // Fix: use instanceof instead of isMesh (Three.js r69 compat)
+                        model.traverse(function(child) {
+                            if (child instanceof THREE.Mesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
                             }
                         });
 
-                        // 4. Crear geometría y material "Dummy" para satisfacer a la clase Item de Blueprint3D
-                        // Creamos una caja invisible del tamaño del modelo
+                        // Dummy geometry sized to match the scaled model
                         var geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
-                        var material = new THREE.MeshBasicMaterial({
-                            visible: false,
-                            transparent: true,
-                            opacity: 0
-                        });
+                        var material = new THREE.MeshBasicMaterial({ visible: false, transparent: true, opacity: 0 });
 
-                        // 5. Instanciar la clase Item (que hereda de Mesh)
                         var ItemClass = BP3D.Items.Factory.getClass(itemType);
                         var item = new ItemClass(scope.model, metadata, geometry, material, position, rotation, scale);
-
                         item.fixed = fixed || false;
-
-                        // 6. Añadir el modelo GLB visual como HIJO del Item lógico
                         item.add(model);
 
-                        // 7. Añadir a la escena y notificar
                         scope.items.push(item);
                         scope.add(item);
                         item.initObject();
                         scope.itemLoadedCallbacks.fire(item);
-
-                    }, undefined, function (error) {
+                        }, undefined, function(error) {
                         console.error("Error cargando GLB:", error);
-                    });
+                        });
+
 
                 } else {
                     // --- LÓGICA ORIGINAL PARA JS/JSON (Legacy) ---
