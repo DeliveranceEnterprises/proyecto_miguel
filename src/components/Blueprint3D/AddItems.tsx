@@ -67,6 +67,11 @@ const itemCategories = [
     items: [
       { name: 'Baúl', image: 'plan3d/models/thumbnails/baul_image.png', model: 'plan3d/models/js/baul.glb', type: 1 },
       { name: 'Robot', image: 'plan3d/models/thumbnails/robot.png', model: 'plan3d/models/js/robot_3D.glb', type: 1 },
+      { name: 'allybot', image: 'plan3d/models/thumbnails/allybot.png', model: 'plan3d/models/js/allybot.glb', type: 1 },
+      { name: 'pandabot', image: 'plan3d/models/thumbnails/pandabot.png', model: 'plan3d/models/js/pandabot.glb', type: 1 },
+      { name: 'pudu_bellabot', image: 'plan3d/models/thumbnails/pudu_bellabot.png', model: 'plan3d/models/js/pudu_bellabot.glb', type: 1 },
+      { name: 'pudu_ketty', image: 'plan3d/models/thumbnails/pudu_ketty.png', model: 'plan3d/models/js/pudu_ketty.glb', type: 1 },
+      { name: 'viggo_sc50', image: 'plan3d/models/thumbnails/viggo_sc50.png', model: 'plan3d/models/js/viggo_sc50.glb', type: 1 },
     ]
   }
 

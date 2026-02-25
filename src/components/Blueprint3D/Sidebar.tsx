@@ -1,248 +1,159 @@
-import React, { useState, useEffect } from 'react';
-import { useBlueprint3D } from './Blueprint3DApp';
+import {
+  Box,
+  Drawer,
+  DrawerBody,
+  DrawerCloseButton,
+  DrawerContent,
+  DrawerOverlay,
+  Flex,
+  IconButton,
+  Image,
+  Text,
+  Divider,
+  useColorModeValue,
+  useDisclosure,
+} from "@chakra-ui/react"
+import { useQueryClient } from "@tanstack/react-query"
+import { FiLogOut, FiMenu } from "react-icons/fi"
 
-const Sidebar: React.FC = () => {
-  const { appState, onStateChange, selectedItem, isLoading, selectedWall, selectedFloor, onTextureReset } = useBlueprint3D();
-  const [contextMenuVisible, setContextMenuVisible] = useState(false);
-  const [itemDimensions, setItemDimensions] = useState({ width: 0, height: 0, depth: 0 });
-  const [isFixed, setIsFixed] = useState(false);
+import Logo from "/assets/images/deliverance-wlogo.svg"
+import type { UserPublic } from "../../client"
+import useAuth from "../../hooks/useAuth"
+import SidebarItems from "./SidebarItems"
 
-  useEffect(() => {
-    if (selectedItem) {
-      // Convert cm to inches for display
-      const cmToIn = (cm: number) => cm / 2.54;
-      setItemDimensions({
-        width: Math.round(cmToIn(selectedItem.getWidth())),
-        height: Math.round(cmToIn(selectedItem.getHeight())),
-        depth: Math.round(cmToIn(selectedItem.getDepth()))
-      });
-      setIsFixed(selectedItem.fixed || false);
-      setContextMenuVisible(true);
-    } else {
-      setContextMenuVisible(false);
-    }
-  }, [selectedItem]);
+const Sidebar = () => {
+  const queryClient = useQueryClient()
+  const bgColor = useColorModeValue("ui.light", "ui.dark")
+  const textColor = useColorModeValue("ui.dark", "ui.light")
+  const secBgColor = useColorModeValue("ui.secondary", "ui.darkSlate")
+  const currentUser = queryClient.getQueryData<UserPublic>(["currentUser"])
+  const { isOpen, onOpen, onClose } = useDisclosure()
+  const { logout } = useAuth()
 
-  const handleStateChange = (e: React.MouseEvent, newState: 'DESIGN' | 'FLOORPLAN' | 'SHOP') => {
-    e.preventDefault();
-    onStateChange(newState);
-  };
-
-  const handleDeleteItem = () => {
-    if (selectedItem) {
-      selectedItem.remove();
-    }
-  };
-
-  const handleDimensionChange = (dimension: 'width' | 'height' | 'depth', value: number) => {
-    if (selectedItem) {
-      const inToCm = (inches: number) => inches * 2.54;
-      const newDimensions = { ...itemDimensions, [dimension]: value };
-      
-      selectedItem.resize(
-        inToCm(newDimensions.height),
-        inToCm(newDimensions.width),
-        inToCm(newDimensions.depth)
-      );
-      
-      setItemDimensions(newDimensions);
-    }
-  };
-
-  const handleFixedChange = (checked: boolean) => {
-    if (selectedItem) {
-      selectedItem.setFixed(checked);
-      setIsFixed(checked);
-    }
-  };
-
-  const handleTextureSelect = (textureUrl: string, textureStretch: boolean, textureScale: number) => {
-    if (selectedWall) {
-      selectedWall.setTexture(textureUrl, textureStretch, textureScale);
-    } else if (selectedFloor) {
-      selectedFloor.setTexture(textureUrl, textureStretch, textureScale);
-    }
-    // Reset texture selection after applying
-    onTextureReset();
-  };
+  const handleLogout = async () => {
+    logout()
+  }
 
   return (
-    <div className="col-xs-3 sidebar">
-      {/* Main Navigation */}
-      <ul className="nav nav-sidebar">
-        <li id="floorplan_tab" className={appState === 'FLOORPLAN' ? 'active' : ''}>
-          <a href="#" onClick={(e) => handleStateChange(e, 'FLOORPLAN')}>
-            Edit Floorplan
-            <span className="glyphicon glyphicon-chevron-right pull-right"></span>
-          </a>
-        </li>
-        <li id="design_tab" className={appState === 'DESIGN' ? 'active' : ''}>
-          <a href="#" onClick={(e) => handleStateChange(e, 'DESIGN')}>
-            Design
-            <span className="glyphicon glyphicon-chevron-right pull-right"></span>
-          </a>
-        </li>
-        <li id="items_tab" className={appState === 'SHOP' ? 'active' : ''}>
-          <a href="#" onClick={(e) => handleStateChange(e, 'SHOP')}>
-            Add Items
-            <span className="glyphicon glyphicon-chevron-right pull-right"></span>
-          </a>
-        </li>
-      </ul>
-      <hr />
+    <>
+      {/* Mobile */}
+      <IconButton
+        onClick={onOpen}
+        display={{ base: "flex", md: "none" }}
+        aria-label="Open Menu"
+        position="absolute"
+        fontSize="20px"
+        m={4}
+        icon={<FiMenu />}
+      />
+      <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
+        <DrawerOverlay />
+        <DrawerContent maxW="280px" bg={secBgColor}>
+          <DrawerCloseButton 
+            color={textColor}
+            _hover={{ bg: useColorModeValue("gray.100", "gray.700") }}
+            borderRadius="full"
+            size="lg"
+          />
+          <DrawerBody py={6} px={4}>
+            <Flex flexDir="column" justify="space-between" h="full">
+              <Box>
+                <Image src={Logo} alt="logo" p={4} mb={2} />
+                <Box p={3} mb={4}>
+                  <Divider borderColor={useColorModeValue("gray.300", "gray.600")} />
+                </Box>
+                <SidebarItems onClose={onClose} />
+                <Box p={3} mt={4}>
+                  <Divider borderColor={useColorModeValue("gray.300", "gray.600")} mb={4} />
+                </Box>
+                <Flex
+                  as="button"
+                  onClick={handleLogout}
+                  p={3}
+                  color="ui.danger"
+                  fontWeight="semibold"
+                  alignItems="center"
+                  borderRadius="12px"
+                  _hover={{ 
+                    bg: useColorModeValue("red.50", "red.900"),
+                    transform: "translateY(-1px)"
+                  }}
+                  transition="all 0.2s"
+                >
+                  <FiLogOut />
+                  <Text ml={3}>Log out</Text>
+                </Flex>
+              </Box>
+              {currentUser?.email && (
+                <Box
+                  p={3}
+                  bg={useColorModeValue("red.50", "red.800")}
+                  borderRadius="12px"
+                  border="1px solid"
+                  borderColor={useColorModeValue("red.200", "red.600")}
+                  mt={4}
+                >
+                  <Text color={textColor} noOfLines={2} fontSize="xs" fontWeight="medium" textAlign="center" opacity={0.8}>
+                    Platform version : 0.0.0
+                  </Text>
+                </Box>
+              )}
+            </Flex>
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
 
-      {/* Context Menu */}
-      {contextMenuVisible && selectedItem && (
-        <div id="context-menu">
-          <div style={{ margin: '0 20px' }}>
-            <span id="context-menu-name" className="lead">{selectedItem.metadata?.itemName || 'Selected Item'}</span>
-            <br /><br />
-            <button className="btn btn-block btn-danger" id="context-menu-delete" onClick={handleDeleteItem}>
-              <span className="glyphicon glyphicon-trash"></span> 
-              Delete Item
-            </button>
-            <br />
-            <div className="panel panel-default">
-              <div className="panel-heading">Adjust Size</div>
-              <div className="panel-body" style={{ color: '#333333' }}>
-                <div className="form form-horizontal">
-                  <div className="form-group">
-                    <label className="col-sm-5 control-label">Width</label>
-                    <div className="col-sm-6">
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        id="item-width"
-                        value={itemDimensions.width}
-                        onChange={(e) => handleDimensionChange('width', parseInt(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="col-sm-5 control-label">Depth</label>
-                    <div className="col-sm-6">
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        id="item-depth"
-                        value={itemDimensions.depth}
-                        onChange={(e) => handleDimensionChange('depth', parseInt(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="col-sm-5 control-label">Height</label>
-                    <div className="col-sm-6">
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        id="item-height"
-                        value={itemDimensions.height}
-                        onChange={(e) => handleDimensionChange('height', parseInt(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <small><span className="text-muted">Measurements in inches.</span></small>
-              </div>
-            </div>
-            <label>
-              <input 
-                type="checkbox" 
-                id="fixed" 
-                checked={isFixed}
-                onChange={(e) => handleFixedChange(e.target.checked)}
-              /> 
-              Lock in place
-            </label>
-            <br /><br />
-          </div>
-        </div>
-      )}
+      {/* Desktop */}
+      <Box
+        bg={bgColor}
+        p={4}
+        h="100vh"
+        position="sticky"
+        top="0"
+        display={{ base: "none", md: "flex" }}
+        zIndex={1}
+      >
+        <Flex
+          flexDir="column"
+          justify="space-between"
+          bg={secBgColor}
+          p={4}
+          borderRadius="16px"
+          h="calc(100vh - 32px)"
+          border="1px solid"
+          borderColor={useColorModeValue("gray.200", "gray.700")}
+        >
+          <Box>
+            <Image src={Logo} alt="Logo" w="280px" maxW="2xs" p={3} mb={2} />
+            <Box p={3} mb={4}>
+              <Divider borderColor={useColorModeValue("gray.300", "gray.600")} />
+            </Box>
+            <SidebarItems />
+          </Box>
+          {currentUser?.email && (
+            <Box
+              p={3}
+              bg={useColorModeValue("gray.50", "gray.800")}
+              borderRadius="12px"
+              border="1px solid"
+              borderColor={useColorModeValue("gray.200", "gray.600")}
+            >
+              <Text
+                color={textColor}
+                noOfLines={2}
+                fontSize="xs"
+                fontWeight="medium"
+                textAlign="center"
+                opacity={0.8}
+              >
+                Platform version : 0.0.0
+              </Text>
+            </Box>
+          )}
+        </Flex>
+      </Box>
+    </>
+  )
+}
 
-      {/* Floor textures */}
-      {selectedFloor && (
-        <div id="floorTexturesDiv" style={{ padding: '0 20px' }}>
-          <div className="panel panel-default">
-            <div className="panel-heading">Adjust Floor</div>
-            <div className="panel-body" style={{ color: '#333333' }}>
-              <div className="col-sm-6" style={{ padding: '3px' }}>
-                <a 
-                  href="#" 
-                  className="thumbnail texture-select-thumbnail" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleTextureSelect("/plan3d/rooms/textures/light_fine_wood.jpg", false, 300);
-                  }}
-                >
-                  <img alt="Thumbnail light fine wood" src="/plan3d/rooms/thumbnails/thumbnail_light_fine_wood.jpg" />
-                </a>
-              </div>
-              <div className="col-sm-6" style={{ padding: '3px' }}>
-                <a 
-                  href="#" 
-                  className="thumbnail texture-select-thumbnail" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleTextureSelect("/plan3d/rooms/textures/hardwood.png", false, 400);
-                  }}
-                >
-                  <img alt="Thumbnail hardwood" src="/plan3d/rooms/thumbnails/thumbnail_light_fine_wood.jpg" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Wall Textures */}
-      {selectedWall && (
-        <div id="wallTextures" style={{ padding: '0 20px' }}>
-          <div className="panel panel-default">
-            <div className="panel-heading">Adjust Wall</div>
-            <div className="panel-body" style={{ color: '#333333' }}>
-              <div className="col-sm-6" style={{ padding: '3px' }}>
-                <a 
-                  href="#" 
-                  className="thumbnail texture-select-thumbnail" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleTextureSelect("/plan3d/rooms/textures/marbletiles.jpg", false, 300);
-                  }}
-                >
-                  <img alt="Thumbnail marbletiles" src="/plan3d/rooms/thumbnails/thumbnail_marbletiles.jpg" />
-                </a>
-              </div>
-              <div className="col-sm-6" style={{ padding: '3px' }}>
-                <a 
-                  href="#" 
-                  className="thumbnail texture-select-thumbnail" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleTextureSelect("/plan3d/rooms/textures/wallmap_yellow.png", true, 0);
-                  }}
-                >
-                  <img alt="Thumbnail wallmap yellow" src="/plan3d/rooms/thumbnails/thumbnail_wallmap_yellow.png" />
-                </a>
-              </div>
-              <div className="col-sm-6" style={{ padding: '3px' }}>
-                <a 
-                  href="#" 
-                  className="thumbnail texture-select-thumbnail" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleTextureSelect("/plan3d/rooms/textures/light_brick.jpg", false, 100);
-                  }}
-                >
-                  <img alt="Thumbnail light brick" src="/plan3d/rooms/thumbnails/thumbnail_light_brick.jpg" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default Sidebar;
+export default Sidebar

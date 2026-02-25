@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Viewer from './Viewer';
 import Floorplanner from './Floorplanner';
 import AddItems from './AddItems';
+import AddDevices from './AddDevices';
 import { generateUID } from './utils';
 
 // Declare global window interface
@@ -55,7 +56,7 @@ interface Blueprint3DInstance {
 }
 
 // Define the application states
-type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP';
+type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES';
 
 // Define the Blueprint3D context
 interface Blueprint3DContextType {
@@ -781,6 +782,10 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
               <div id="add-items" className={appState === 'SHOP' ? 'active' : ''}>
                 <AddItems />
+              </div>
+
+              <div id="add-devices" className={appState === 'DEVICES' ? 'active' : ''}>
+                <AddDevices />
               </div>
             </div>
           </div>

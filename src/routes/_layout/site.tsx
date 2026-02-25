@@ -32,8 +32,6 @@ import { ScenesService } from "../../client";
 import useCustomToast from "../../hooks/useCustomToast";
 import { useState, useRef, useEffect } from "react";
 import { FiTrash2, FiX } from "react-icons/fi";
-import GlbPreview from "../../components/GlbPreview/GlbPreview";
-
 
 export const Route = createFileRoute("/_layout/site")({
   component: Site,
@@ -563,27 +561,6 @@ function Site() {
     }
   };
 
-
-  // --- GLB Preview: decidir qué modelo mostrar ---
-  const normalizeUrl = (u?: string | null) => {
-    if (!u) return null;
-    return u.startsWith("/") ? u : `/${u}`;
-  };
-
-  // En Blueprint3D normalmente el modelo va en selectedItem.metadata.modelUrl
-  const selectedModelUrl = normalizeUrl(
-    selectedItem?.metadata?.modelUrl ??
-    selectedItem?.metadata?.model_url ??
-    selectedItem?.model_url ??
-    null
-  );
-
-  const isGlb = !!selectedModelUrl && selectedModelUrl.toLowerCase().endsWith(".glb");
-
-  // Si no hay item seleccionado (o no es .glb), mostramos el modelo por defecto
-  const previewUrl = isGlb ? (selectedModelUrl as string) : "/assets/models/bellabotkerfus.glb";
-
-
   return (
     <Container maxW="full" bg={bgColor} minH="100vh">
       <Box pt={12} px={4} height="100vh" overflowY="auto">
@@ -641,16 +618,22 @@ function Site() {
               />
             </Box>
 
-            {/* Middle: Blueprint3D Application */}
-            <Box flex="1" minW={0} height="100%">
+            {/* Right: Blueprint3D Application */}
+            <Box flexBasis={{ base: "100%", md: "80%" }} height="100%">
               <Card
                 height="100%"
                 width="100%"
                 variant="outline"
                 borderColor={useColorModeValue("gray.200", "gray.600")}
               >
-                <CardBody height="100%" p={0} overflow="hidden" position="relative">
-                  <Blueprint3DApp
+                <CardBody 
+                  height="100%" 
+                  p={0}
+                  overflow="hidden"
+                  position="relative"
+                >
+                  {/* Always render Blueprint3D Application for ref availability */}
+                  <Blueprint3DApp 
                     ref={blueprint3DRef}
                     onSceneSaved={handleSceneSaved}
                     onEditingModeChange={handleEditingModeChange}
@@ -658,19 +641,20 @@ function Site() {
                     onSelectedWallChange={handleSelectedWallChange}
                     onSelectedFloorChange={handleSelectedFloorChange}
                   />
-
+                  
+                  {/* Show overlay message when no scene is loaded */}
                   {!hasLoadedScene && (
-                    <Center
-                      position="absolute"
-                      top={0}
-                      left={0}
-                      right={0}
-                      bottom={0}
+                    <Center 
+                      position="absolute" 
+                      top={0} 
+                      left={0} 
+                      right={0} 
+                      bottom={0} 
                       bg={useColorModeValue("white", "gray.800")}
                       zIndex={10}
                     >
-                      <Text
-                        fontSize="lg"
+                      <Text 
+                        fontSize="lg" 
                         color={useColorModeValue("gray.500", "gray.400")}
                         textAlign="center"
                       >
@@ -678,10 +662,11 @@ function Site() {
                       </Text>
                     </Center>
                   )}
-
+                  
+                  {/* Item Editing Panel - appears when an item is selected AND in editing mode */}
                   {selectedItem && isEditingMode && (
-                    <ItemEditingPanel
-                      selectedItem={selectedItem}
+                    <ItemEditingPanel 
+                      selectedItem={selectedItem} 
                       onClose={() => {
                         if (blueprint3DRef.current) {
                           blueprint3DRef.current.clearSelections();
@@ -689,42 +674,15 @@ function Site() {
                       }}
                     />
                   )}
-
+                  
+                  {/* Wall/Floor Editing Panel - appears when a wall or floor is selected AND in editing mode */}
                   {isEditingMode && (
-                    <WallFloorEditingPanel
-                      selectedWall={selectedWall}
-                      selectedFloor={selectedFloor}
+                    <WallFloorEditingPanel 
+                      selectedWall={selectedWall} 
+                      selectedFloor={selectedFloor} 
                       onClose={handleCloseTexturePanel}
                     />
                   )}
-                </CardBody>
-              </Card>
-            </Box>
-
-            {/* Right: GLB Preview */}
-            <Box flexBasis={{ base: "100%", md: "420px" }} height="100%">
-              <Card
-                height="100%"
-                width="100%"
-                variant="outline"
-                borderColor={useColorModeValue("gray.200", "gray.600")}
-              >
-                <CardBody p={3}>
-                  <Text fontWeight="semibold" mb={2}>
-                    GLB Preview
-                  </Text>
-
-                  <Text
-                    fontSize="sm"
-                    color={useColorModeValue("gray.500", "gray.400")}
-                    mb={2}
-                  >
-                    {isGlb
-                      ? "Mostrando el modelo del item seleccionado"
-                      : "Mostrando modelo por defecto (selecciona un item .glb para cambiar)"}
-                  </Text>
-
-                  <GlbPreview url={previewUrl} height={360} />
                 </CardBody>
               </Card>
             </Box>

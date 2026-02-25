@@ -147,6 +147,22 @@
   display: block !important;
 }
 
+.blueprint3d-app #add-devices {
+  background: #fff !important;
+  border-left: 1px solid #ccc !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: none; /* Will be controlled by JavaScript */
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.blueprint3d-app #add-devices.active {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+
 /* Controls - from example.css */
 .blueprint3d-app #main-controls {
   position: absolute;

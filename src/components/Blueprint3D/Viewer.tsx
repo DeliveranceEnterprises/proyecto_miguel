@@ -87,17 +87,17 @@ const Viewer: React.FC = () => {
     try {
       const data = blueprint3d.model.exportSerialized();
       const parsedData = JSON.parse(data);
-      
+
       console.log('Raw blueprint data:', parsedData);
 
       // Check if we're updating an existing scene or creating a new one
       const isExistingScene = currentUID && await checkSceneExists(currentUID);
-      
+
       let response;
-      
+
       if (isExistingScene) {
         console.log('Updating existing scene:', currentUID);
-        
+
         // Transform the blueprint data for update (SceneUpdate format)
         const updateData: SceneUpdate = {
           floorplan: {
@@ -123,17 +123,17 @@ const Viewer: React.FC = () => {
           `Your scene ${currentUID.substring(0, 8)}... has been updated`,
           'success'
         );
-        
+
         // Exit editing mode after successful save
         setIsEditingMode(false);
         // Notify parent component about editing mode change
         if (onEditingModeChange) {
           onEditingModeChange(false);
         }
-        
+
       } else {
         console.log('Creating new scene');
-        
+
         // Transform the blueprint data for creation (SceneCreate format)
         const createData: SceneCreate = {
           organization_id: activeOrgId,
@@ -163,7 +163,7 @@ const Viewer: React.FC = () => {
           `Your new scene has been saved with ID: ${response.uid}`,
           'success'
         );
-        
+
         // Exit editing mode after successful save
         setIsEditingMode(false);
         // Notify parent component about editing mode change
@@ -171,7 +171,7 @@ const Viewer: React.FC = () => {
           onEditingModeChange(false);
         }
       }
-      
+
       // Notify parent component that a scene was saved (for both create and update)
       if (onSceneSaved && response.uid) {
         onSceneSaved(response.uid);
@@ -204,25 +204,25 @@ const Viewer: React.FC = () => {
       // If we have a current scene UID, reload it from the server
       if (currentUID) {
         console.log('Canceling editing, reloading scene:', currentUID);
-        
+
         // Check if the scene still exists
         const exists = await checkSceneExists(currentUID);
         if (exists) {
           // Fetch the scene data from the API
           const sceneData = await ScenesService.readScene({ sceneId: currentUID });
-          
+
           // Transform the scene data to the format expected by Blueprint3D
           const blueprintData = {
             uid: sceneData.uid,
             floorplan: sceneData.floorplan,
             items: sceneData.items || []
           };
-          
+
           // Reload the scene into the Blueprint3D viewer
           if (blueprint3d?.model) {
             blueprint3d.model.loadSerialized(JSON.stringify(blueprintData));
             console.log('Scene reloaded successfully after cancel:', currentUID);
-            
+
             showToast(
               'Changes Discarded',
               'Scene has been restored to its last saved version',
@@ -248,7 +248,7 @@ const Viewer: React.FC = () => {
         'error'
       );
     }
-    
+
     setIsEditingMode(false);
     // Notify parent component about editing mode change
     if (onEditingModeChange) {
@@ -264,10 +264,10 @@ const Viewer: React.FC = () => {
       if (currentUID && blueprint3d?.model) {
         try {
           console.log("Cargando nueva escena:", currentUID);
-          
+
           // 1. Pedimos los datos de la nueva escena a la API
           const sceneData = await ScenesService.readScene({ sceneId: currentUID });
-          
+
           // 2. Preparamos el formato (por seguridad, para evitar fallos si viene vacío)
           const formatData = {
             floorplan: sceneData.floorplan || { corners: {}, walls: [] },
@@ -277,15 +277,15 @@ const Viewer: React.FC = () => {
 
           // 3. Inyectamos los datos en el motor 3D
           blueprint3d.model.loadSerialized(JSON.stringify(formatData));
-          
+
         } catch (error) {
           console.error("Error al cargar la escena automática:", error);
         }
       } else if (!currentUID && blueprint3d?.model) {
         // Si no hay ID (porque borraste la última), limpiamos la pantalla
-        blueprint3d.model.loadSerialized(JSON.stringify({ 
-            floorplan: { corners: {}, walls: [] }, 
-            items: [] 
+        blueprint3d.model.loadSerialized(JSON.stringify({
+          floorplan: { corners: {}, walls: [] },
+          items: []
         }));
       }
     };
@@ -300,7 +300,7 @@ const Viewer: React.FC = () => {
         {!isEditingMode ? (
           // AQUI ESTAN LOS CAMBIOS PRINCIPALES
           <>
-            <button 
+            <button
               onClick={handleEnterEditMode}
               style={{
                 backgroundColor: '#596A6E',
@@ -333,7 +333,7 @@ const Viewer: React.FC = () => {
         ) : (
           // Show all editing buttons when in editing mode
           <>
-            <button 
+            <button
               onClick={handleSaveDesign}
               style={{
                 backgroundColor: '#48BB78',
@@ -362,8 +362,8 @@ const Viewer: React.FC = () => {
             >
               <FiSave style={{ marginRight: '6px' }} /> Save Plan
             </button>
-            
-            <button 
+
+            <button
               onClick={(e) => { e.preventDefault(); onStateChange('FLOORPLAN'); }}
               style={{
                 backgroundColor: '#596A6E',
@@ -392,8 +392,8 @@ const Viewer: React.FC = () => {
             >
               <FiCodepen style={{ marginRight: '6px' }} /> Edit Floorplan
             </button>
-            
-            <button 
+
+            <button
               onClick={(e) => { e.preventDefault(); onStateChange('SHOP'); }}
               style={{
                 backgroundColor: '#EEEEEE',
@@ -422,8 +422,38 @@ const Viewer: React.FC = () => {
             >
               <FiPlus style={{ marginRight: '6px' }} /> Add Items
             </button>
-            
-            <button 
+
+            <button
+              onClick={(e) => { e.preventDefault(); onStateChange('DEVICES'); }}
+              style={{
+                backgroundColor: '#2B6CB0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#2C5282';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#2B6CB0';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <FiPlus style={{ marginRight: '6px' }} /> Add Devices
+            </button>
+
+            <button
               onClick={handleCancelEditing}
               style={{
                 backgroundColor: '#E53E3E',
@@ -468,7 +498,7 @@ const Viewer: React.FC = () => {
         <a href="#" className="btn btn-default bottom" onClick={handleZoomIn}>
           <span className="glyphicon glyphicon-zoom-in"></span>
         </a>
-        
+
         <span>&nbsp;</span>
 
         <a className="btn btn-default bottom" href="#" onClick={() => handlePan('left')}>
@@ -489,8 +519,8 @@ const Viewer: React.FC = () => {
 
       {/* Discrete UID Display */}
       {currentUID && (
-        <div 
-          id="scene-uid" 
+        <div
+          id="scene-uid"
           style={{
             position: 'absolute',
             top: '10px',
