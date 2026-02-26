@@ -40,43 +40,74 @@ export const Route = createFileRoute("/_layout/site")({
 // Item Editing Panel Component - receives selectedItem and onClose as props to avoid context issues
 function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClose: () => void }) {
   const [itemDimensions, setItemDimensions] = useState({ width: 0, height: 0, depth: 0 });
+  // Guardamos las dimensiones "base" para calcular el ratio al hacer resize
+  const baseDimensionsRef = useRef({ width: 0, height: 0, depth: 0 });
   const [isFixed, setIsFixed] = useState(false);
-  
+
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
   const borderColor = useColorModeValue("gray.200", "gray.600");
 
   useEffect(() => {
     if (selectedItem) {
-      // Convert cm to inches for display
       const cmToIn = (cm: number) => cm / 2.54;
-      setItemDimensions({
+      const dims = {
         width: Math.round(cmToIn(selectedItem.getWidth())),
         height: Math.round(cmToIn(selectedItem.getHeight())),
-        depth: Math.round(cmToIn(selectedItem.getDepth()))
-      });
+        depth: Math.round(cmToIn(selectedItem.getDepth())),
+      };
+      setItemDimensions(dims);
+      baseDimensionsRef.current = { ...dims }; // <-- guardamos la base
       setIsFixed(selectedItem.fixed || false);
     }
   }, [selectedItem]);
 
   const handleDeleteItem = () => {
-    if (selectedItem) {
-      selectedItem.remove();
-    }
+    if (selectedItem) selectedItem.remove();
   };
 
+  // Solo actualiza el estado local, NO llama a selectedItem.resize todavía
   const handleDimensionChange = (dimension: 'width' | 'height' | 'depth', value: number) => {
-    if (selectedItem) {
-      const inToCm = (inches: number) => inches * 2.54;
-      const newDimensions = { ...itemDimensions, [dimension]: value };
-      
-      selectedItem.resize(
-        inToCm(newDimensions.height),
-        inToCm(newDimensions.width),
-        inToCm(newDimensions.depth)
-      );
-      setItemDimensions(newDimensions);
-    }
+    setItemDimensions(prev => ({ ...prev, [dimension]: value }));
+  };
+
+  // Al pulsar Resize: detecta qué dimensión cambió, aplica el ratio a las demás
+  const handleResize = () => {
+    if (!selectedItem) return;
+
+    const base = baseDimensionsRef.current;
+    const current = itemDimensions;
+
+    // Detectar qué dimensión cambió más (en ratio) respecto a la base
+    const ratios = {
+      width:  base.width  > 0 ? current.width  / base.width  : 1,
+      height: base.height > 0 ? current.height / base.height : 1,
+      depth:  base.depth  > 0 ? current.depth  / base.depth  : 1,
+    };
+
+    // La dimensión con mayor cambio relativo es la "driver"
+    const changedDim = (Object.keys(ratios) as Array<'width' | 'height' | 'depth'>).reduce(
+      (a, b) => Math.abs(ratios[a] - 1) >= Math.abs(ratios[b] - 1) ? a : b
+    );
+
+    const ratio = ratios[changedDim];
+
+    // Calcular nuevas dimensiones proporcionales
+    const newDims = {
+      width:  Math.round(base.width  * ratio),
+      height: Math.round(base.height * ratio),
+      depth:  Math.round(base.depth  * ratio),
+    };
+
+    const inToCm = (inches: number) => inches * 2.54;
+    selectedItem.resize(
+      inToCm(newDims.height),
+      inToCm(newDims.width),
+      inToCm(newDims.depth),
+    );
+
+    setItemDimensions(newDims);
+    baseDimensionsRef.current = { ...newDims }; // actualizar la base para el próximo resize
   };
 
   const handleFixedChange = (checked: boolean) => {
@@ -86,9 +117,7 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
     }
   };
 
-  if (!selectedItem) {
-    return null;
-  }
+  if (!selectedItem) return null;
 
   return (
     <Card
@@ -110,12 +139,12 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
               <Text fontSize="lg" fontWeight="bold">
                 {selectedItem.metadata?.itemName || 'Selected Item'}
               </Text>
-              <IconButton 
-                aria-label="Close item panel" 
-                icon={<FiX />} 
-                size="sm" 
-                variant="ghost" 
-                onClick={onClose} 
+              <IconButton
+                aria-label="Close item panel"
+                icon={<FiX />}
+                size="sm"
+                variant="ghost"
+                onClick={onClose}
               />
             </Flex>
             <Divider />
@@ -125,60 +154,38 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
             <Text fontSize="sm" fontWeight="medium" color="gray.500">
               Dimensions (inches)
             </Text>
-            
-            <FormControl>
-              <FormLabel fontSize="sm">Width</FormLabel>
-              <NumberInput
-                size="sm"
-                value={itemDimensions.width}
-                onChange={(_, value) => handleDimensionChange('width', value || 0)}
-                min={1}
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </FormControl>
 
-            <FormControl>
-              <FormLabel fontSize="sm">Height</FormLabel>
-              <NumberInput
-                size="sm"
-                value={itemDimensions.height}
-                onChange={(_, value) => handleDimensionChange('height', value || 0)}
-                min={1}
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </FormControl>
-
-            <FormControl>
-              <FormLabel fontSize="sm">Depth</FormLabel>
-              <NumberInput
-                size="sm"
-                value={itemDimensions.depth}
-                onChange={(_, value) => handleDimensionChange('depth', value || 0)}
-                min={1}
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </FormControl>
+            {(['width', 'height', 'depth'] as const).map((dim) => (
+              <FormControl key={dim}>
+                <FormLabel fontSize="sm" textTransform="capitalize">{dim}</FormLabel>
+                <NumberInput
+                  size="sm"
+                  value={itemDimensions[dim]}
+                  onChange={(_, value) => handleDimensionChange(dim, value || 0)}
+                  min={1}
+                >
+                  <NumberInputField />
+                  <NumberInputStepper>
+                    <NumberIncrementStepper />
+                    <NumberDecrementStepper />
+                  </NumberInputStepper>
+                </NumberInput>
+              </FormControl>
+            ))}
           </VStack>
 
+          {/* Botón Resize proporcional */}
+          <Button
+            colorScheme="blue"
+            variant="solid"
+            size="sm"
+            onClick={handleResize}
+          >
+            Resize (proportional)
+          </Button>
+
           <FormControl display="flex" alignItems="center">
-            <FormLabel fontSize="sm" mb={0}>
-              Fixed Position
-            </FormLabel>
+            <FormLabel fontSize="sm" mb={0}>Fixed Position</FormLabel>
             <Switch
               isChecked={isFixed}
               onChange={(e) => handleFixedChange(e.target.checked)}

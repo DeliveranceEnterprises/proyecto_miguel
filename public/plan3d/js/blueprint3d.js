@@ -177,19 +177,17 @@ var BP3D;
               @param startX X start coord for raycast
               @param startY Y start coord for raycast
             */
-            Utils.pointInPolygon = function (x, y, corners, startX, startY) {
-                startX = startX || 0;
-                startY = startY || 0;
-                //ensure that point(startX, startY) is outside the polygon consists of corners
-                var tMinX = 0, tMinY = 0;
-                if (startX === undefined || startY === undefined) {
-                    for (var tI = 0; tI < corners.length; tI++) {
-                        tMinX = Math.min(tMinX, corners[tI].x);
-                        tMinY = Math.min(tMinX, corners[tI].y);
-                    }
-                    startX = tMinX - 10;
-                    startY = tMinY - 10;
+            Utils.pointInPolygon = function (x, y, corners) {
+                // Always compute a start point that is guaranteed to be outside
+                // the polygon bounding box, so the ray-cast parity is correct
+                // regardless of where the world origin (0,0) falls.
+                var tMinX = corners[0].x, tMinY = corners[0].y;
+                for (var tI = 1; tI < corners.length; tI++) {
+                    tMinX = Math.min(tMinX, corners[tI].x);
+                    tMinY = Math.min(tMinY, corners[tI].y);
                 }
+                var startX = tMinX - 10;
+                var startY = tMinY - 10;
                 var tIntersects = 0;
                 for (var tI = 0; tI < corners.length; tI++) {
                     var tFirstCorner = corners[tI], tSecondCorner;
@@ -2427,6 +2425,12 @@ var BP3D;
                 // init item loader
                 this.loader = new THREE.JSONLoader();
                 this.loader.crossOrigin = "";
+                /**
+                 * Generation counter: incremented every time clearItems() is called.
+                 * Async GLB loaders capture this value at start; if it changes before
+                 * the load completes the result is discarded, preventing stale duplicates.
+                 */
+                this._loadGeneration = 0;
             }
             /** Adds a non-item, basically a mesh, to the scene.
              * @param mesh The mesh to be added.
@@ -2461,7 +2465,9 @@ var BP3D;
             };
             /** Removes all items. */
             Scene.prototype.clearItems = function () {
-                var items_copy = this.items;
+                // Increment the generation counter to invalidate any in-flight async
+                // GLB loaders from the previous scene load cycle.
+                this._loadGeneration++;
                 var scope = this;
                 this.items.forEach(function (item) {
                     scope.removeItem(item, true);
@@ -2505,7 +2511,18 @@ var BP3D;
                     var loader = new THREE.GLTFLoader();
                     this.itemLoadingCallbacks.fire();
 
-                    loader.load(fileName, function(gltf) {
+                    // Capture the current generation so we can detect if clearItems()
+                    // is called before this async load completes (stale load guard).
+                    var capturedGeneration = this._loadGeneration;
+
+                    loader.load(fileName, function (gltf) {
+                        // If the scene was cleared (new load started) while this GLB was
+                        // loading asynchronously, discard the result to prevent duplicates.
+                        if (scope._loadGeneration !== capturedGeneration) {
+                            console.warn('GLB load discarded (scene reloaded before completion):', fileName);
+                            return;
+                        }
+
                         var model = gltf.scene;
 
                         // Auto-scale: GLB is in metres, Blueprint3D uses centimetres
@@ -2513,7 +2530,7 @@ var BP3D;
                         var rawBox = new THREE.Box3().setFromObject(model);
                         var rawSize = new THREE.Vector3();
                         rawSize.subVectors(rawBox.max, rawBox.min);
-                        
+
                         // If model is tiny (<5 units), it's probably in metres → scale ×100
                         var autoScale = (rawSize.length() < 5) ? 100 : 1;
                         model.scale.set(autoScale, autoScale, autoScale);
@@ -2529,10 +2546,10 @@ var BP3D;
                         model.position.set(-center.x, -center.y, -center.z);
 
                         // Fix: use instanceof instead of isMesh (Three.js r69 compat)
-                        model.traverse(function(child) {
+                        model.traverse(function (child) {
                             if (child instanceof THREE.Mesh) {
-                            child.castShadow = true;
-                            child.receiveShadow = true;
+                                child.castShadow = true;
+                                child.receiveShadow = true;
                             }
                         });
 
@@ -2549,9 +2566,9 @@ var BP3D;
                         scope.add(item);
                         item.initObject();
                         scope.itemLoadedCallbacks.fire(item);
-                        }, undefined, function(error) {
+                    }, undefined, function (error) {
                         console.error("Error cargando GLB:", error);
-                        });
+                    });
 
 
                 } else {

@@ -4,8 +4,8 @@
 @font-face {
   font-family: 'Glyphicons Halflings';
   src: url('/plan3d/fonts/glyphicons-halflings-regular.woff2') format('woff2'),
-       url('/plan3d/fonts/glyphicons-halflings-regular.woff') format('woff'),
-       url('/plan3d/fonts/glyphicons-halflings-regular.ttf') format('truetype');
+    url('/plan3d/fonts/glyphicons-halflings-regular.woff') format('woff'),
+    url('/plan3d/fonts/glyphicons-halflings-regular.ttf') format('truetype');
 }
 
 /* Reset and base styles for Blueprint3D app */
@@ -14,7 +14,6 @@
 }
 
 .blueprint3d-app {
-  /* General Formatting from example.css */
   overflow: hidden;
   height: 100%;
   width: 100%;
@@ -23,8 +22,6 @@
   line-height: 1.42857143;
   color: #333;
   position: relative;
-  
-  /* Override any parent styles */
   margin: 0 !important;
   padding: 0 !important;
 }
@@ -43,7 +40,7 @@
   overflow: hidden;
 }
 
-/* Main row - from example.css */
+/* Main row */
 .blueprint3d-app .main-row {
   padding: 0;
   height: 100%;
@@ -51,47 +48,104 @@
   margin: 0;
 }
 
-/* Sidebar - from example.css */
+/* Sidebar */
 .blueprint3d-app .sidebar {
   padding: 20px;
   overflow-x: hidden;
-  overflow-y: auto; 
+  overflow-y: auto;
   border-right: 1px solid #eee;
 }
 
 .blueprint3d-app .nav-sidebar {
-  margin-right: -21px; /* 20px padding + 1px border */
+  margin-right: -21px;
   margin-bottom: 20px;
   margin-left: -20px;
 }
 
-.blueprint3d-app .nav-sidebar > li > a {
+.blueprint3d-app .nav-sidebar>li>a {
   padding-right: 20px;
   padding-left: 20px;
 }
 
-.blueprint3d-app .nav-sidebar > .active > a,
-.blueprint3d-app .nav-sidebar > .active > a:hover,
-.blueprint3d-app .nav-sidebar > .active > a:focus {
+.blueprint3d-app .nav-sidebar>.active>a,
+.blueprint3d-app .nav-sidebar>.active>a:hover,
+.blueprint3d-app .nav-sidebar>.active>a:focus {
   color: #fff;
   background-color: #428bca;
 }
 
-/* Main content - from example.css */
+/* Main content */
 .blueprint3d-app .main {
   padding: 0;
   height: 100%;
   width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
+/* ── TASKS MODE: side-by-side flex layout ───────────────────────────────── */
+.blueprint3d-app .tasks-mode {
+  display: flex !important;
+  flex-direction: row !important;
+  overflow: hidden !important;
+}
 
+/*
+ * In tasks-mode, the viewer must NOT be width:100%.
+ * We override the base #viewer rule (which has !important width:100%)
+ * by using a more specific selector + !important here.
+ */
+.blueprint3d-app .tasks-mode #viewer,
+.blueprint3d-app .tasks-mode #viewer.active {
+  display: flex !important;
+  flex: 1 1 0% !important;          /* grow/shrink freely */
+  width: 0 !important;              /* let flex distribute the space */
+  min-width: 0 !important;
+  height: 100% !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  cursor: crosshair !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
 
-/* Design sections - from example.css */
+/* The Three.js canvas inside viewer must fill the flex area */
+.blueprint3d-app .tasks-mode #viewer canvas,
+.blueprint3d-app .tasks-mode #viewer #three-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+/* Tasks panel — fixed-width right column */
+.blueprint3d-app .tasks-mode #add-tasks,
+.blueprint3d-app .tasks-mode #add-tasks.active {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 0 0 340px !important;
+  width: 340px !important;
+  min-width: 340px !important;
+  max-width: 340px !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  border-left: 1px solid #E2E8F0 !important;
+  background: #FAFAFA !important;
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.08) !important;
+  z-index: 10 !important;
+}
+
+/* ── All other panels hidden in tasks-mode ── */
+.blueprint3d-app .tasks-mode #floorplanner,
+.blueprint3d-app .tasks-mode #add-items,
+.blueprint3d-app .tasks-mode #add-devices {
+  display: none !important;
+}
+
+/* ── Design sections (default / non-tasks modes) ────────────────────────── */
 .blueprint3d-app #viewer {
   background: #f0f0f0 !important;
   position: relative !important;
-  display: none; /* Will be controlled by JavaScript */
+  display: none;
   width: 100% !important;
   height: 100% !important;
 }
@@ -113,7 +167,7 @@
 .blueprint3d-app #floorplanner {
   background: #f0f0f0 !important;
   position: relative !important;
-  display: none; /* Will be controlled by JavaScript */
+  display: none;
   width: 100% !important;
   height: 100% !important;
 }
@@ -138,7 +192,7 @@
   border-left: 1px solid #ccc !important;
   padding: 20px !important;
   overflow-y: auto !important;
-  display: none; /* Will be controlled by JavaScript */
+  display: none;
   width: 100% !important;
   height: 100% !important;
 }
@@ -152,7 +206,7 @@
   border-left: 1px solid #ccc !important;
   padding: 0 !important;
   overflow: hidden !important;
-  display: none; /* Will be controlled by JavaScript */
+  display: none;
   width: 100% !important;
   height: 100% !important;
 }
@@ -162,21 +216,39 @@
   flex-direction: column !important;
 }
 
+.blueprint3d-app #add-tasks {
+  background: rgba(255, 255, 255, 0.97) !important;
+  border-left: 1px solid #E2E8F0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: none;
+  width: 340px;
+  height: 100% !important;
+  z-index: 10;
+}
 
-/* Controls - from example.css */
+.blueprint3d-app #add-tasks.active {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-shrink: 0;
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
 .blueprint3d-app #main-controls {
   position: absolute;
   top: 20px;
   left: 20px;
-  padding: 0;  
+  padding: 0;
+  z-index: 20;
 }
 
 .blueprint3d-app #camera-controls {
   position: absolute;
   bottom: 20px;
   right: 0;
-  padding: 0 20px;  
+  padding: 0 20px;
   text-align: right;
+  z-index: 20;
 }
 
 .blueprint3d-app #floorplanner-controls {
@@ -184,7 +256,7 @@
   left: 0;
   top: 0;
   margin: 20px 0;
-  padding: 0 20px; 
+  padding: 0 20px;
   width: 100%;
 }
 
@@ -199,7 +271,7 @@
   display: none;
 }
 
-/* Interactive elements - from example.css */
+/* ── Interactive elements ───────────────────────────────────────────────── */
 .blueprint3d-app .add-item {
   cursor: pointer;
 }
@@ -223,7 +295,7 @@
   display: block;
 }
 
-/* Essential Bootstrap styles for Blueprint3D */
+/* ── Bootstrap button subset ────────────────────────────────────────────── */
 .blueprint3d-app .btn {
   display: inline-block !important;
   padding: 6px 12px;
@@ -325,39 +397,39 @@
   vertical-align: middle;
 }
 
-.blueprint3d-app .btn-group-vertical > .btn {
+.blueprint3d-app .btn-group-vertical>.btn {
   display: block;
   float: none;
   width: 100%;
   max-width: 100%;
 }
 
-/* Navigation styles */
+/* ── Navigation ─────────────────────────────────────────────────────────── */
 .blueprint3d-app .nav {
   padding-left: 0;
   margin-bottom: 0;
   list-style: none;
 }
 
-.blueprint3d-app .nav > li {
+.blueprint3d-app .nav>li {
   position: relative;
   display: block;
 }
 
-.blueprint3d-app .nav > li > a {
+.blueprint3d-app .nav>li>a {
   position: relative;
   display: block;
   padding: 10px 15px;
   text-decoration: none;
 }
 
-.blueprint3d-app .nav > li > a:hover,
-.blueprint3d-app .nav > li > a:focus {
+.blueprint3d-app .nav>li>a:hover,
+.blueprint3d-app .nav>li>a:focus {
   text-decoration: none;
   background-color: #eee;
 }
 
-/* Grid system essentials - with clearfix */
+/* ── Grid system ─────────────────────────────────────────────────────────── */
 .blueprint3d-app .row {
   margin-left: -15px;
   margin-right: -15px;
@@ -424,13 +496,13 @@
   display: block !important;
 }
 
-/* Panel styles */
+/* ── Panels ──────────────────────────────────────────────────────────────── */
 .blueprint3d-app .panel {
   margin-bottom: 20px;
   background-color: #fff;
   border: 1px solid transparent;
   border-radius: 4px;
-  box-shadow: 0 1px 1px rgba(0,0,0,.05);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .05);
 }
 
 .blueprint3d-app .panel-default {
@@ -450,7 +522,7 @@
   padding: 15px;
 }
 
-/* Form styles */
+/* ── Forms ───────────────────────────────────────────────────────────────── */
 .blueprint3d-app .form-control {
   display: block;
   width: 100%;
@@ -463,13 +535,13 @@
   background-image: none;
   border: 1px solid #ccc;
   border-radius: 4px;
-  box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
 }
 
 .blueprint3d-app .form-control:focus {
   border-color: #66afe9;
   outline: 0;
-  box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px rgba(102, 175, 233, .6);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075), 0 0 8px rgba(102, 175, 233, .6);
 }
 
 .blueprint3d-app .form-group {
@@ -487,7 +559,7 @@
   font-weight: bold;
 }
 
-/* Thumbnail styles */
+/* ── Thumbnails ──────────────────────────────────────────────────────────── */
 .blueprint3d-app .thumbnail {
   display: block;
   padding: 4px;
@@ -499,7 +571,6 @@
   transition: border .2s ease-in-out;
   text-decoration: none;
   color: #333;
-  
 }
 
 .blueprint3d-app .thumbnail:hover,
@@ -510,12 +581,11 @@
 
 .blueprint3d-app .thumbnail img {
   width: 100%;
-  /*height: auto;*/
   height: 250px;
   object-fit: contain;
 }
 
-/* Utility classes */
+/* ── Utilities ───────────────────────────────────────────────────────────── */
 .blueprint3d-app .pull-right {
   float: right !important;
 }
@@ -549,7 +619,7 @@
   clear: both;
 }
 
-/* Glyphicons - essential ones with fallback */
+/* ── Glyphicons ──────────────────────────────────────────────────────────── */
 .blueprint3d-app .glyphicon {
   position: relative;
   top: 1px;
@@ -562,142 +632,74 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glyphicon icons with fallback text */
-.blueprint3d-app .glyphicon-chevron-right:before {
-  content: "\e080";
-}
-.blueprint3d-app .glyphicon-chevron-right:after {
-  content: "›";
-  font-family: sans-serif;
-  display: none;
-}
+.blueprint3d-app .glyphicon-chevron-right:before { content: "\e080"; }
+.blueprint3d-app .glyphicon-chevron-right:after  { content: "›"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-trash:before         { content: "\e020"; }
+.blueprint3d-app .glyphicon-trash:after          { content: "🗑"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-zoom-in:before       { content: "\e015"; }
+.blueprint3d-app .glyphicon-zoom-in:after        { content: "+"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-zoom-out:before      { content: "\e016"; }
+.blueprint3d-app .glyphicon-zoom-out:after       { content: "-"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-home:before          { content: "\e021"; }
+.blueprint3d-app .glyphicon-home:after           { content: "⌂"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-arrow-left:before    { content: "\e091"; }
+.blueprint3d-app .glyphicon-arrow-left:after     { content: "←"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-arrow-right:before   { content: "\e092"; }
+.blueprint3d-app .glyphicon-arrow-right:after    { content: "→"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-arrow-up:before      { content: "\e093"; }
+.blueprint3d-app .glyphicon-arrow-up:after       { content: "↑"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-arrow-down:before    { content: "\e094"; }
+.blueprint3d-app .glyphicon-arrow-down:after     { content: "↓"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-move:before          { content: "\e047"; }
+.blueprint3d-app .glyphicon-move:after           { content: "✋"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-pencil:before        { content: "\e065"; }
+.blueprint3d-app .glyphicon-pencil:after         { content: "✏"; font-family: sans-serif; display: none; }
+.blueprint3d-app .glyphicon-remove:before        { content: "\e014"; }
+.blueprint3d-app .glyphicon-remove:after         { content: "×"; font-family: sans-serif; display: none; }
 
-.blueprint3d-app .glyphicon-trash:before {
-  content: "\e020";
-}
-.blueprint3d-app .glyphicon-trash:after {
-  content: "🗑";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-zoom-in:before {
-  content: "\e015";
-}
-.blueprint3d-app .glyphicon-zoom-in:after {
-  content: "+";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-zoom-out:before {
-  content: "\e016";
-}
-.blueprint3d-app .glyphicon-zoom-out:after {
-  content: "-";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-home:before {
-  content: "\e021";
-}
-.blueprint3d-app .glyphicon-home:after {
-  content: "⌂";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-arrow-left:before {
-  content: "\e091";
-}
-.blueprint3d-app .glyphicon-arrow-left:after {
-  content: "←";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-arrow-right:before {
-  content: "\e092";
-}
-.blueprint3d-app .glyphicon-arrow-right:after {
-  content: "→";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-arrow-up:before {
-  content: "\e093";
-}
-.blueprint3d-app .glyphicon-arrow-up:after {
-  content: "↑";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-arrow-down:before {
-  content: "\e094";
-}
-.blueprint3d-app .glyphicon-arrow-down:after {
-  content: "↓";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-move:before {
-  content: "\e047";
-}
-.blueprint3d-app .glyphicon-move:after {
-  content: "✋";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-pencil:before {
-  content: "\e065";
-}
-.blueprint3d-app .glyphicon-pencil:after {
-  content: "✏";
-  font-family: sans-serif;
-  display: none;
-}
-
-.blueprint3d-app .glyphicon-remove:before {
-  content: "\e014";
-}
-.blueprint3d-app .glyphicon-remove:after {
-  content: "×";
-  font-family: sans-serif;
-  display: none;
-}
-
-/* Fallback when glyphicons font is not available */
 @supports not (font-family: 'Glyphicons Halflings') {
-  .blueprint3d-app .glyphicon:before {
-    display: none !important;
-  }
-  .blueprint3d-app .glyphicon:after {
-    display: inline !important;
-  }
+  .blueprint3d-app .glyphicon:before  { display: none !important; }
+  .blueprint3d-app .glyphicon:after   { display: inline !important; }
 }
 
-
-
-/* Responsive design */
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .blueprint3d-app .main {
     width: 100%;
   }
-  
+
   .blueprint3d-app #viewer,
   .blueprint3d-app #floorplanner,
   .blueprint3d-app #add-items {
     height: calc(100% - 60px);
   }
-  
+
   .blueprint3d-app .col-xs-3,
   .blueprint3d-app .col-xs-9 {
     width: 100%;
     float: none;
+  }
+
+  /* Stack vertically on small screens */
+  .blueprint3d-app .tasks-mode {
+    flex-direction: column !important;
+  }
+
+  .blueprint3d-app .tasks-mode #viewer,
+  .blueprint3d-app .tasks-mode #viewer.active {
+    flex: 0 0 55% !important;
+    width: 100% !important;
+    height: 55% !important;
+  }
+
+  .blueprint3d-app .tasks-mode #add-tasks,
+  .blueprint3d-app .tasks-mode #add-tasks.active {
+    flex: 0 0 45% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: unset !important;
+    height: 45% !important;
+    border-left: none !important;
+    border-top: 1px solid #E2E8F0 !important;
   }
 }

@@ -3,6 +3,7 @@ import Viewer from './Viewer';
 import Floorplanner from './Floorplanner';
 import AddItems from './AddItems';
 import AddDevices from './AddDevices';
+import AddTasks from './AddTasks';
 import { generateUID } from './utils';
 
 // Declare global window interface
@@ -40,6 +41,9 @@ interface Blueprint3DInstance {
     centerCamera: () => void;
     updateWindowSize: () => void;
     getController: () => { setSelectedObject: (obj: any) => void; enabled: boolean };
+    getCamera: () => any;
+    getScene: () => any;
+    needsUpdate: () => void;
     itemSelectedCallbacks: { add: (callback: Function) => void };
     itemUnselectedCallbacks: { add: (callback: Function) => void };
     wallClicked: { add: (callback: Function) => void };
@@ -52,11 +56,13 @@ interface Blueprint3DInstance {
     reset: () => void;
     resizeView: () => void;
     modeResetCallbacks: { add: (callback: Function) => void };
+    mouseX: number;
+    mouseY: number;
   };
 }
 
 // Define the application states
-type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES';
+type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES' | 'TASKS';
 
 // Define the Blueprint3D context
 interface Blueprint3DContextType {
@@ -83,6 +89,7 @@ interface Blueprint3DContextType {
   onSelectedItemChange?: (item: any) => void;
   onSelectedWallChange?: (wall: any) => void;
   onSelectedFloorChange?: (floor: any) => void;
+  onWaypointPick?: (callback: (x: number, z: number) => void) => (() => void);
 }
 
 // Create the context
@@ -137,10 +144,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   const [currentUID, setCurrentUID] = useState<string>('');
   const componentMounted = useRef(false);
 
-
-
-
-
   // Track when component mounts
   useEffect(() => {
     componentMounted.current = true;
@@ -176,7 +179,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
       try {
         console.log('Loading Blueprint3D library...');
 
-        // Load jQuery first (required by Blueprint3D)
         const jqueryScript = document.createElement('script');
         jqueryScript.src = jquerySrc;
         jqueryScript.onerror = (error) => {
@@ -184,9 +186,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
         };
         jqueryScript.onload = () => {
           console.log('jQuery loaded');
-          console.log('jQuery version:', (window as any).jQuery?.fn?.jquery || 'unknown');
 
-          // Load Three.js
           const threeScript = document.createElement('script');
           threeScript.src = threeSrc;
           threeScript.onerror = (error) => {
@@ -194,24 +194,20 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
           };
           threeScript.onload = () => {
             console.log('Three.js loaded');
-            console.log('Three.js version:', (window as any).THREE?.REVISION || 'unknown');
 
-            // Load GLTFLoader (must be after Three.js, before Blueprint3D)
             const gltfLoaderScript = document.createElement('script');
             gltfLoaderScript.src = '/plan3d/js/GLTFLoader.js';
             gltfLoaderScript.onerror = (error) => {
-              console.warn('Failed to load GLTFLoader (GLB support disabled):', error);
-              // Continue loading blueprint3d even if GLTFLoader fails
+              console.warn('Failed to load GLTFLoader:', error);
               loadBp3d();
             };
             gltfLoaderScript.onload = () => {
-              console.log('GLTFLoader loaded – THREE.GLTFLoader:', !!(window as any).THREE?.GLTFLoader);
+              console.log('GLTFLoader loaded');
               loadBp3d();
             };
             document.head.appendChild(gltfLoaderScript);
 
             function loadBp3d() {
-              // Load Blueprint3D library
               const bp3dScript = document.createElement('script');
               bp3dScript.src = bp3dSrc;
               bp3dScript.onerror = (error) => {
@@ -219,30 +215,15 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
               };
               bp3dScript.onload = () => {
                 console.log('Blueprint3D library loaded');
-
-                // Add a small delay to ensure the script is fully executed
                 setTimeout(() => {
-                  // Check if BP3D is available globally (like in the original example)
                   if (typeof BP3D !== 'undefined') {
-                    console.log('BP3D is available globally:', BP3D);
-                    // Also assign it to window for consistency
                     (window as any).BP3D = BP3D;
                     setIsInitialized(true);
                   } else {
                     console.error('BP3D not found globally after loading');
-                    console.log('Available globals:', Object.keys(window).filter(key => key.includes('BP3D')));
-
-                    // Try to find any BP3D-related objects
-                    const allGlobals = Object.keys(window);
-                    const bp3dRelated = allGlobals.filter(key => key.toLowerCase().includes('bp3d') || key.toLowerCase().includes('blueprint'));
-                    console.log('BP3D related globals:', bp3dRelated);
-
-                    // Check if there are any console errors
-                    console.log('Checking for console errors...');
                   }
-                }, 200); // Increased delay
+                }, 200);
               };
-
               document.head.appendChild(bp3dScript);
             }
           };
@@ -263,92 +244,46 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   // Initialize Blueprint3D after DOM elements are available
   useEffect(() => {
     if (!isInitialized || typeof BP3D === 'undefined' || !componentMounted.current) {
-      console.log('Waiting for initialization:', {
-        isInitialized,
-        hasBP3D: typeof BP3D !== 'undefined',
-        componentMounted: componentMounted.current
-      });
       return;
     }
 
-    console.log('Starting Blueprint3D initialization...');
-
     const initializeBlueprint3D = (retryCount = 0) => {
       try {
-        // Wait for DOM elements to be available
         const viewerElement = document.getElementById('viewer');
         const floorplannerElement = document.getElementById('floorplanner-canvas');
 
-        console.log('DOM elements check (attempt ' + (retryCount + 1) + '):', {
-          viewer: viewerElement,
-          floorplanner: floorplannerElement
-        });
-
-        // Additional debugging: check all elements with 'viewer' in the ID
-        const allElements = document.querySelectorAll('[id*="viewer"], [id*="canvas"], [id*="floorplanner"]');
-        console.log('All related DOM elements found:', Array.from(allElements).map(el => ({ id: el.id, tagName: el.tagName })));
-
-        // Debug: check what's actually in the body
-        console.log('Body children:', Array.from(document.body.children).map(el => ({ id: el.id, className: el.className, tagName: el.tagName })));
-
-        // Debug: check the main container
-        const mainContainer = document.querySelector('.main');
-        if (mainContainer) {
-          console.log('Main container children:', Array.from(mainContainer.children).map(el => ({ id: el.id, className: el.className, tagName: el.tagName })));
-        } else {
-          console.log('Main container not found');
-        }
-
         if (!viewerElement || !floorplannerElement) {
-          if (retryCount < 20) { // Max 20 retries (1 second total)
-            console.log('DOM elements not ready yet, retrying... (attempt ' + (retryCount + 1) + '/20)');
+          if (retryCount < 20) {
             setTimeout(() => initializeBlueprint3D(retryCount + 1), 50);
             return;
           } else {
-            console.error('Failed to find DOM elements after 20 attempts. Check if React components are rendering correctly.');
+            console.error('Failed to find DOM elements after 20 attempts.');
             return;
           }
         }
 
-        console.log('All DOM elements found, proceeding with initialization');
-
-        // Initialize Blueprint3D with the same options as the original example
         const opts = {
           floorplannerElement: 'floorplanner-canvas',
           threeElement: '#viewer',
-          threeCanvasElement: null, // Not used but expected by constructor
+          threeCanvasElement: null,
           textureDir: assetsBaseUrl.replace(/\/$/, '') + '/rooms/textures/',
           widget: false
         };
 
-        console.log('Initializing Blueprint3D with options:', opts);
-
-        // Pre-check: Make sure jQuery can find the viewer element
         const jQueryViewer = (window as any).$('#viewer');
-        console.log('jQuery viewer element:', jQueryViewer);
-        console.log('jQuery viewer length:', jQueryViewer.length);
-        console.log('jQuery viewer get(0):', jQueryViewer.get(0));
-
         if (jQueryViewer.length === 0) {
           console.error('jQuery cannot find #viewer element!');
           return;
         }
 
-        // Pre-check: Make sure THREE.js is properly loaded
         const THREE = (window as any).THREE;
-        console.log('THREE.js library:', THREE);
-        console.log('THREE.PerspectiveCamera:', THREE?.PerspectiveCamera);
-        console.log('THREE.WebGLRenderer:', THREE?.WebGLRenderer);
-
         if (!THREE || !THREE.PerspectiveCamera || !THREE.WebGLRenderer) {
           console.error('THREE.js library not properly loaded!');
           return;
         }
 
-        // Ensure Blueprint3D relative texture paths resolve under /plan3d/
         try {
           const textureBase = assetsBaseUrl.replace(/\/$/, '') + '/';
-          // Legacy ImageUtils loader used by blueprint3d.js
           if (THREE.ImageUtils && typeof THREE.ImageUtils.loadTexture === 'function') {
             const originalLoadTexture = THREE.ImageUtils.loadTexture.bind(THREE.ImageUtils);
             THREE.ImageUtils.loadTexture = function (url: string, ...rest: any[]) {
@@ -357,67 +292,35 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
             };
           }
         } catch (e) {
-          console.warn('Could not wrap THREE.ImageUtils.loadTexture for path fixing:', e);
+          console.warn('Could not wrap THREE.ImageUtils.loadTexture:', e);
         }
 
         const bp3d = new BP3D.Blueprint3d(opts);
-        console.log('Blueprint3D instance created:', bp3d);
 
-        // Debug the three.js setup
         if (bp3d.three) {
-          console.log('Three.js instance:', bp3d.three);
-          console.log('Three.js element:', bp3d.three.element);
-
-          // Check if camera was created properly
-          if (bp3d.three.getCamera) {
-            const camera = bp3d.three.getCamera();
-            console.log('Camera instance:', camera);
-            console.log('Camera type:', camera?.constructor?.name);
-            if (camera && (window as any).THREE) {
-              console.log('Is camera a THREE.Camera?', camera instanceof (window as any).THREE.Camera);
-              console.log('Is camera a THREE.PerspectiveCamera?', camera instanceof (window as any).THREE.PerspectiveCamera);
-            }
-          }
-        }
-
-        // Set up event handlers for item selection
-        if (bp3d.three) {
-          // Item selection callbacks
           if (bp3d.three.itemSelectedCallbacks) {
             bp3d.three.itemSelectedCallbacks.add((item: any) => {
-              console.log('Item selected:', item);
               setSelectedItem(item);
             });
           }
 
           if (bp3d.three.itemUnselectedCallbacks) {
             bp3d.three.itemUnselectedCallbacks.add(() => {
-              console.log('Item unselected');
               setSelectedItem(null);
             });
           }
 
-          // Loading callbacks
           if (bp3d.model && bp3d.model.scene) {
             if (bp3d.model.scene.itemLoadingCallbacks) {
-              bp3d.model.scene.itemLoadingCallbacks.add(() => {
-                console.log('Item loading started');
-                setIsLoading(true);
-              });
+              bp3d.model.scene.itemLoadingCallbacks.add(() => setIsLoading(true));
             }
-
             if (bp3d.model.scene.itemLoadedCallbacks) {
-              bp3d.model.scene.itemLoadedCallbacks.add(() => {
-                console.log('Item loading finished');
-                setIsLoading(false);
-              });
+              bp3d.model.scene.itemLoadedCallbacks.add(() => setIsLoading(false));
             }
           }
 
-          // Wall and floor click callbacks for texture selection
           if (bp3d.three.wallClicked) {
             bp3d.three.wallClicked.add((wall: any) => {
-              console.log('Wall clicked:', wall);
               setSelectedWall(wall);
               setSelectedFloor(null);
               setSelectedItem(null);
@@ -426,7 +329,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
           if (bp3d.three.floorClicked) {
             bp3d.three.floorClicked.add((floor: any) => {
-              console.log('Floor clicked:', floor);
               setSelectedFloor(floor);
               setSelectedWall(null);
               setSelectedItem(null);
@@ -435,59 +337,36 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
           if (bp3d.three.nothingClicked) {
             bp3d.three.nothingClicked.add(() => {
-              console.log('Nothing clicked - resetting texture selection');
               setSelectedWall(null);
               setSelectedFloor(null);
             });
           }
 
-          // Ensure the controller is properly set up but start disabled
           if (bp3d.three.getController) {
             const controller = bp3d.three.getController();
             if (controller) {
-              controller.enabled = false; // Start disabled - only enable in editing mode
-              console.log('Controller initialized but disabled:', controller.enabled);
+              controller.enabled = false;
             }
           }
 
-          // Make sure the three.js scene is properly initialized
           if (bp3d.three.updateWindowSize) {
-            // Small delay to ensure DOM is ready
             setTimeout(() => {
               bp3d.three.updateWindowSize();
-              console.log('Three.js window size updated');
-
-              // Additional setup to ensure proper interaction
               const viewerElement = document.getElementById('viewer');
               if (viewerElement) {
-                // Make sure the viewer element can receive focus and events
                 viewerElement.style.outline = 'none';
                 viewerElement.tabIndex = -1;
-
-                // Ensure controller is properly enabled for item interaction
-                if (bp3d.three.getController) {
-                  const controller = bp3d.three.getController();
-                  if (controller && controller.needsUpdate !== undefined) {
-                    controller.needsUpdate = true;
-                  }
-                }
-
-                console.log('Viewer element configured for interaction');
               }
             }, 100);
           }
         }
 
         setBlueprint3d(bp3d);
-
-        // Don't load a default floorplan - let the user select a scene first
-        console.log('Blueprint3D initialized successfully, ready for scene loading');
       } catch (error) {
         console.error('Error creating Blueprint3D instance:', error);
       }
     };
 
-    // Use requestAnimationFrame to ensure DOM is ready
     requestAnimationFrame(() => {
       setTimeout(() => initializeBlueprint3D(0), 100);
     });
@@ -496,13 +375,10 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   const handleStateChange = (newState: AppState) => {
     setAppState(newState);
 
-    // Handle state-specific actions like in the original example
     if (blueprint3d) {
       if (newState === 'FLOORPLAN') {
-        // Update floorplan view
         if (blueprint3d.floorplanner) {
           blueprint3d.floorplanner.reset();
-          // Add a small delay to ensure the DOM is updated before resizing
           setTimeout(() => {
             const floorplannerElement = document.getElementById('floorplanner');
             if (floorplannerElement && blueprint3d.floorplanner) {
@@ -510,96 +386,65 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
               const height = window.innerHeight - rect.top;
               floorplannerElement.style.height = height + 'px';
               blueprint3d.floorplanner.resizeView();
-
-              // Center the floorplan view
               setTimeout(() => {
-                if (blueprint3d.floorplanner && blueprint3d.floorplanner.reset) {
+                if (blueprint3d.floorplanner?.reset) {
                   blueprint3d.floorplanner.reset();
-                  console.log('Floorplanner view reset and centered');
                 }
               }, 50);
             }
           }, 100);
         }
       } else if (newState === 'DESIGN') {
-        // Update 3D view
         if (blueprint3d.three) {
           blueprint3d.three.updateWindowSize();
-          // Center the camera when switching to design view
           setTimeout(() => {
-            if (blueprint3d.three && blueprint3d.three.centerCamera) {
-              blueprint3d.three.centerCamera();
-              console.log('Camera centered on design view switch');
-            }
+            blueprint3d.three?.centerCamera?.();
           }, 100);
         }
-        if (blueprint3d.model && blueprint3d.model.floorplan) {
+        if (blueprint3d.model?.floorplan) {
           blueprint3d.model.floorplan.update();
         }
+      } else if (newState === 'TASKS') {
+        // Give the flex layout time to render, then resize the 3D canvas
+        setTimeout(() => {
+          blueprint3d.three?.updateWindowSize?.();
+          console.log('[Blueprint3DApp] Scene resized for TASKS split layout');
+        }, 150);
       }
 
-      // Stop spinning when changing states
-      if (blueprint3d.three && blueprint3d.three.stopSpin) {
+      if (blueprint3d.three?.stopSpin) {
         blueprint3d.three.stopSpin();
       }
 
-      // Set item unselected when changing states
-      if (blueprint3d.three && blueprint3d.three.getController) {
+      if (blueprint3d.three?.getController) {
         const controller = blueprint3d.three.getController();
-        if (controller && controller.setSelectedObject) {
+        if (controller?.setSelectedObject) {
           controller.setSelectedObject(null);
         }
       }
     }
   };
 
-  const handleItemSelect = (item: any) => {
-    setSelectedItem(item);
-  };
-
-  const handleItemUnselect = () => {
-    setSelectedItem(null);
-  };
-
-  const handleLoadingChange = (loading: boolean) => {
-    setIsLoading(loading);
-  };
-
-  const handleWallSelect = (wall: any) => {
-    setSelectedWall(wall);
-    setSelectedFloor(null);
-    setSelectedItem(null);
-  };
-
-  const handleFloorSelect = (floor: any) => {
-    setSelectedFloor(floor);
-    setSelectedWall(null);
-    setSelectedItem(null);
-  };
-
-  const handleTextureReset = () => {
-    setSelectedWall(null);
-    setSelectedFloor(null);
-  };
+  const handleItemSelect = (item: any) => setSelectedItem(item);
+  const handleItemUnselect = () => setSelectedItem(null);
+  const handleLoadingChange = (loading: boolean) => setIsLoading(loading);
+  const handleWallSelect = (wall: any) => { setSelectedWall(wall); setSelectedFloor(null); setSelectedItem(null); };
+  const handleFloorSelect = (floor: any) => { setSelectedFloor(floor); setSelectedWall(null); setSelectedItem(null); };
+  const handleTextureReset = () => { setSelectedWall(null); setSelectedFloor(null); };
 
   const handleClearSelections = () => {
-    // Clear all selections in React state
     setSelectedWall(null);
     setSelectedFloor(null);
     setSelectedItem(null);
-
-    // Also clear selections in Blueprint3D's controller
     if (blueprint3d?.three?.getController) {
       const controller = blueprint3d.three.getController();
-      if (controller && controller.setSelectedObject) {
+      if (controller?.setSelectedObject) {
         controller.setSelectedObject(null);
       }
     }
   };
 
-  const handleUIDChange = (uid: string) => {
-    setCurrentUID(uid);
-  };
+  const handleUIDChange = (uid: string) => setCurrentUID(uid);
 
   const handleCreateNewPlan = () => {
     if (blueprint3d?.model) {
@@ -614,30 +459,10 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
             "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2": { "x": 204.85099999999989, "y": -178.308 }
           },
           "walls": [
-            {
-              "corner1": "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2",
-              "corner2": "f90da5e3-9e0e-eba7-173d-eb0b071e838e",
-              "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 },
-              "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }
-            },
-            {
-              "corner1": "f90da5e3-9e0e-eba7-173d-eb0b071e838e",
-              "corner2": "da026c08-d76a-a944-8e7b-096b752da9ed",
-              "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 },
-              "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }
-            },
-            {
-              "corner1": "da026c08-d76a-a944-8e7b-096b752da9ed",
-              "corner2": "4e3d65cb-54c0-0681-28bf-bddcc7bdb571",
-              "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 },
-              "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }
-            },
-            {
-              "corner1": "4e3d65cb-54c0-0681-28bf-bddcc7bdb571",
-              "corner2": "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2",
-              "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 },
-              "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }
-            }
+            { "corner1": "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2", "corner2": "f90da5e3-9e0e-eba7-173d-eb0b071e838e", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } },
+            { "corner1": "f90da5e3-9e0e-eba7-173d-eb0b071e838e", "corner2": "da026c08-d76a-a944-8e7b-096b752da9ed", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } },
+            { "corner1": "da026c08-d76a-a944-8e7b-096b752da9ed", "corner2": "4e3d65cb-54c0-0681-28bf-bddcc7bdb571", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } },
+            { "corner1": "4e3d65cb-54c0-0681-28bf-bddcc7bdb571", "corner2": "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } }
           ],
           "wallTextures": [],
           "floorTextures": {},
@@ -650,21 +475,16 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
         },
         "items": []
       };
-      console.log('Loading new design with floor texture:', JSON.stringify(defaultFloorplan, null, 2));
       blueprint3d.model.loadSerialized(JSON.stringify(defaultFloorplan));
-      // Update UID in context
       handleUIDChange(newUID);
-      // Ensure floor textures are applied after load
       setTimeout(() => {
         try {
           const rooms = (blueprint3d as any)?.model?.floorplan?.getRooms?.();
-          if (rooms && rooms.length) {
-            const floorUrl = '/plan3d/rooms/textures/hardwood.png';
-            rooms.forEach((room: any) => room.setTexture(floorUrl, true, 400));
-            console.log('Applied floor texture to rooms (new plan):', floorUrl);
+          if (rooms?.length) {
+            rooms.forEach((room: any) => room.setTexture('/plan3d/rooms/textures/hardwood.png', true, 400));
           }
         } catch (e) {
-          console.warn('Could not apply floor textures for new plan:', e);
+          console.warn('Could not apply floor textures:', e);
         }
       }, 0);
     }
@@ -672,72 +492,44 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
   const handleLoadPlan = (planData: any) => {
     if (blueprint3d?.model) {
-      console.log('Loading plan into viewer:', planData);
-
-      // Ensure we switch to design view to show the loaded plan
       handleStateChange('DESIGN');
-
-      // Load the plan data
       blueprint3d.model.loadSerialized(JSON.stringify(planData));
-
-      // Update the current UID
-      if (planData.uid) {
-        handleUIDChange(planData.uid);
-      }
-
-      // Apply floor textures after loading
+      if (planData.uid) handleUIDChange(planData.uid);
       setTimeout(() => {
         try {
           const rooms = (blueprint3d as any)?.model?.floorplan?.getRooms?.();
-          if (rooms && rooms.length && planData.floorplan?.newFloorTextures) {
+          if (rooms?.length && planData.floorplan?.newFloorTextures) {
             rooms.forEach((room: any) => {
-              // Try to find the appropriate texture for this room
               const textureKeys = Object.keys(planData.floorplan.newFloorTextures);
               if (textureKeys.length > 0) {
                 const textureConfig = planData.floorplan.newFloorTextures[textureKeys[0]];
                 room.setTexture(textureConfig.url, true, textureConfig.scale || 400);
               }
             });
-            console.log('Applied floor textures to loaded plan');
           }
         } catch (e) {
-          console.warn('Could not apply floor textures for loaded plan:', e);
+          console.warn('Could not apply floor textures:', e);
         }
       }, 100);
     }
   };
 
-  // Expose functions to parent component
   React.useImperativeHandle(ref, () => ({
     loadPlan: handleLoadPlan,
     createNewPlan: handleCreateNewPlan,
     clearSelections: handleClearSelections,
     setControllerEnabled: (enabled: boolean) => {
-      console.log('🔧 setControllerEnabled called with:', enabled);
       if (blueprint3d?.three?.getController) {
         const controller = blueprint3d.three.getController();
         if (controller) {
           controller.enabled = enabled;
-          console.log('✅ Blueprint3D controller enabled set to:', enabled);
-          console.log('🔍 Controller object:', controller);
-
-          // ¡Hemos eliminado toda la lógica de viewerElement.style.pointerEvents!
-          // Con 'controller.enabled = enabled' es suficiente.
-        } else {
-          console.error('❌ Controller is null after getController()');
         }
-      } else {
-        console.error('❌ Blueprint3D or getController not available');
-        console.log('🔍 Blueprint3D state:', {
-          hasBlueprint3d: !!blueprint3d,
-          hasThree: !!blueprint3d?.three,
-          hasGetController: !!blueprint3d?.three?.getController
-        });
       }
     },
   }));
 
-  // Always render the DOM elements, but show loading state when needed
+  // ─── Styles for the TASKS split layout ───────────────────────────────────────
+  const isTasksMode = appState === 'TASKS';
 
   return (
     <Blueprint3DContext.Provider value={{
@@ -763,30 +555,121 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
       onEditingModeChange,
       onSelectedItemChange,
       onSelectedWallChange,
-      onSelectedFloorChange
+      onSelectedFloorChange,
+      onWaypointPick: (cb) => {
+        const viewerEl = document.getElementById('viewer');
+        if (!viewerEl) return () => { };
+
+        let wasMoved = false;
+        const onMouseDown = () => { wasMoved = false; };
+        const onMouseMove = () => { wasMoved = true; };
+
+        const handler = (e: MouseEvent) => {
+          if (wasMoved) return;
+          if (!blueprint3d?.three) return;
+          const camera = blueprint3d.three.getCamera();
+          const bpScene = blueprint3d.three.getScene();
+          if (!camera || !bpScene) return;
+
+          const THREE = (window as any).THREE;
+          if (!THREE) return;
+
+          const rect = viewerEl.getBoundingClientRect();
+          const mouse = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -((e.clientY - rect.top) / rect.height) * 2 + 1
+          );
+
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, camera);
+
+          const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+          const target = new THREE.Vector3();
+          const hit = raycaster.ray.intersectPlane(groundPlane, target);
+          if (hit) cb(target.x, target.z);
+        };
+
+        viewerEl.addEventListener('mousedown', onMouseDown);
+        viewerEl.addEventListener('mousemove', onMouseMove);
+        viewerEl.addEventListener('mouseup', handler as EventListener);
+        return () => {
+          viewerEl.removeEventListener('mousedown', onMouseDown);
+          viewerEl.removeEventListener('mousemove', onMouseMove);
+          viewerEl.removeEventListener('mouseup', handler as EventListener);
+        };
+      },
     }}>
+
       <div className="blueprint3d-app">
         <div className="container-fluid">
           <div className="row main-row">
-            <div className="col-xs-12 main">
-              {/* Always render the viewer div initially for Blueprint3D initialization */}
-              <div id="viewer" className={appState === 'DESIGN' ? 'active' : ''}>
+            {/*
+             * LAYOUT:
+             *   - TASKS mode  → flex row: [viewer flex:1] | [AddTasks panel 340px]
+             *   - Other modes → single column as before
+             */}
+            <div
+              className={`col-xs-12 main${isTasksMode ? ' tasks-mode' : ''}`}
+              style={isTasksMode ? {
+                display: 'flex',
+                flexDirection: 'row',
+                height: '100%',
+                overflow: 'hidden',
+              } : {}}
+            >
+              {/* ── 3D Viewer ─────────────────────────────────────────────── */}
+              <div
+                id="viewer"
+                className={appState === 'DESIGN' || appState === 'TASKS' ? 'active' : ''}
+                style={isTasksMode ? {
+                  flex: '1 1 0%',
+                  minWidth: 0,
+                  height: '100%',
+                  cursor: 'crosshair',
+                  position: 'relative',
+                } : undefined}
+              >
                 <Viewer />
               </div>
 
-              {/* Always render the floorplanner div for initialization */}
-              <div id="floorplanner" className={appState === 'FLOORPLAN' ? 'active' : ''}>
-                <canvas id="floorplanner-canvas"></canvas>
+              {/* ── Floorplanner ──────────────────────────────────────────── */}
+              <div
+                id="floorplanner"
+                className={appState === 'FLOORPLAN' ? 'active' : ''}
+              >
+                <canvas id="floorplanner-canvas" />
                 <Floorplanner />
               </div>
 
+              {/* ── Add Items ─────────────────────────────────────────────── */}
               <div id="add-items" className={appState === 'SHOP' ? 'active' : ''}>
                 <AddItems />
               </div>
 
+              {/* ── Add Devices ───────────────────────────────────────────── */}
               <div id="add-devices" className={appState === 'DEVICES' ? 'active' : ''}>
                 <AddDevices />
               </div>
+
+              {/* ── Add Tasks — SIDE PANEL (not overlay) ──────────────────── */}
+              <div
+                id="add-tasks"
+                className={appState === 'TASKS' ? 'active' : ''}
+                style={isTasksMode ? {
+                  flex: '0 0 340px',
+                  width: '340px',
+                  height: '100%',
+                  overflowY: 'auto',
+                  borderLeft: '1px solid #E2E8F0',
+                  background: '#FAFAFA',
+                  boxShadow: '-2px 0 12px rgba(0,0,0,0.07)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                } : undefined}
+              >
+                <AddTasks />
+              </div>
+
             </div>
           </div>
         </div>
