@@ -149,9 +149,11 @@ const AddDevices: React.FC = () => {
       modelUrl: asset.model,
       itemType: asset.type,
       format: isGLB ? 'glb' : 'json',
-      deviceId: device.uid,
+      // ── Identity fields (both names so AddTasks always finds this item) ──
+      device_uid: device.uid,          // canonical field read by AddTasks
+      deviceId: device.uid,            // legacy field
       deviceCategory: device.category ?? '',
-      deviceModel: device.model,
+      deviceModel: device.model,       // used as fallback match in AddTasks
       deviceImage: device.image ?? '',
       deviceEnabled: device.enabled ?? false,
     };
@@ -175,9 +177,11 @@ const AddDevices: React.FC = () => {
       modelUrl: asset.model,
       itemType: asset.type,
       format: isGLB ? 'glb' : 'json',
-      deviceId: apiDevice?.uid ?? mapKey,
+      // ── Identity fields (both names so AddTasks always finds this item) ──
+      device_uid: apiDevice?.uid ?? '',  // canonical field — empty if no API match
+      deviceId: apiDevice?.uid ?? mapKey, // legacy field
       deviceCategory: apiDevice?.category ?? '',
-      deviceModel: apiDevice?.model ?? mapKey,
+      deviceModel: apiDevice?.model ?? mapKey,  // used as fallback match in AddTasks
       deviceImage: apiDevice?.image ?? mapKey,
       deviceEnabled: apiDevice?.enabled ?? false,
     };
@@ -532,7 +536,7 @@ function DeviceDetailsModal({ entry, onClose, onConfirm }: { entry: DisplayDevic
         overflow: 'hidden',
         animation: 'slideUp 0.3s ease-out'
       }} onClick={e => e.stopPropagation()}>
-        
+
         {/* Header */}
         <div style={{
           padding: '14px', borderBottom: '1px solid #E2E8F0',
@@ -549,7 +553,7 @@ function DeviceDetailsModal({ entry, onClose, onConfirm }: { entry: DisplayDevic
 
         {/* Content - STYLE COPIED FROM CODE A */}
         <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', maxHeight: '70vh' }}>
-          
+
           {/* Image Box (styled like Code A) */}
           <div style={{
             width: '100%',
@@ -562,9 +566,9 @@ function DeviceDetailsModal({ entry, onClose, onConfirm }: { entry: DisplayDevic
             justifyContent: 'center',
             overflow: 'hidden'
           }}>
-            <img 
-              src={thumbnail} 
-              alt={name} 
+            <img
+              src={thumbnail}
+              alt={name}
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               onError={e => { (e.currentTarget as HTMLImageElement).src = NOT_FOUND_THUMBNAIL; }}
             />
@@ -572,9 +576,9 @@ function DeviceDetailsModal({ entry, onClose, onConfirm }: { entry: DisplayDevic
 
           {/* Details List (styled like Code A) */}
           {!hasApiInfo ? (
-             <div style={{ color: '#718096', fontSize: '13px' }}>
-                This device is configured in the 3D map but no API data was found for it (or you are not logged in).
-             </div>
+            <div style={{ color: '#718096', fontSize: '13px' }}>
+              This device is configured in the 3D map but no API data was found for it (or you are not logged in).
+            </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', fontSize: '14px', color: '#1A202C' }}>
               <div><b>Name:</b> {apiDevice.name}</div>

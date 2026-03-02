@@ -4,6 +4,8 @@ import Floorplanner from './Floorplanner';
 import AddItems from './AddItems';
 import AddDevices from './AddDevices';
 import AddTasks from './AddTasks';
+import TaskList from './TaskList';
+
 import { generateUID } from './utils';
 
 // Declare global window interface
@@ -62,7 +64,8 @@ interface Blueprint3DInstance {
 }
 
 // Define the application states
-type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES' | 'TASKS';
+type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES' | 'TASKS' | 'TASK_LIST';
+
 
 // Define the Blueprint3D context
 interface Blueprint3DContextType {
@@ -356,6 +359,18 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
               if (viewerElement) {
                 viewerElement.style.outline = 'none';
                 viewerElement.tabIndex = -1;
+
+                // Add ResizeObserver to handle split-pane layout changes reliably
+                const resizeObserver = new ResizeObserver(() => {
+                  bp3d.three.updateWindowSize();
+                  if (bp3d.three.centerCamera && (appState === 'DESIGN' || appState === 'SHOP' || appState === 'DEVICES')) {
+                    // Only center camera if we aren't potentially dragging waypoints around
+                    bp3d.three.centerCamera();
+                  }
+                });
+                resizeObserver.observe(viewerElement);
+
+                // Track observer for cleanup if needed, but it lives as long as the component does
               }
             }, 100);
           }
@@ -404,12 +419,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
         if (blueprint3d.model?.floorplan) {
           blueprint3d.model.floorplan.update();
         }
-      } else if (newState === 'TASKS') {
-        // Give the flex layout time to render, then resize the 3D canvas
-        setTimeout(() => {
-          blueprint3d.three?.updateWindowSize?.();
-          console.log('[Blueprint3DApp] Scene resized for TASKS split layout');
-        }, 150);
       }
 
       if (blueprint3d.three?.stopSpin) {
@@ -530,6 +539,9 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
   // ─── Styles for the TASKS split layout ───────────────────────────────────────
   const isTasksMode = appState === 'TASKS';
+  const isTaskListMode = appState === 'TASK_LIST';
+  const isSidePanel = isTasksMode || isTaskListMode;
+
 
   return (
     <Blueprint3DContext.Provider value={{
@@ -609,8 +621,8 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
              *   - Other modes → single column as before
              */}
             <div
-              className={`col-xs-12 main${isTasksMode ? ' tasks-mode' : ''}`}
-              style={isTasksMode ? {
+              className={`col-xs-12 main${isSidePanel ? ' tasks-mode' : ''}`}
+              style={isSidePanel ? {
                 display: 'flex',
                 flexDirection: 'row',
                 height: '100%',
@@ -620,8 +632,9 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
               {/* ── 3D Viewer ─────────────────────────────────────────────── */}
               <div
                 id="viewer"
-                className={appState === 'DESIGN' || appState === 'TASKS' ? 'active' : ''}
-                style={isTasksMode ? {
+                className={appState === 'DESIGN' || appState === 'TASKS' || appState === 'TASK_LIST' ? 'active' : ''}
+                style={isSidePanel ? {
+
                   flex: '1 1 0%',
                   minWidth: 0,
                   height: '100%',
@@ -651,24 +664,47 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 <AddDevices />
               </div>
 
-              {/* ── Add Tasks — SIDE PANEL (not overlay) ──────────────────── */}
-              <div
-                id="add-tasks"
-                className={appState === 'TASKS' ? 'active' : ''}
-                style={isTasksMode ? {
-                  flex: '0 0 340px',
-                  width: '340px',
-                  height: '100%',
-                  overflowY: 'auto',
-                  borderLeft: '1px solid #E2E8F0',
-                  background: '#FAFAFA',
-                  boxShadow: '-2px 0 12px rgba(0,0,0,0.07)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                } : undefined}
-              >
-                <AddTasks />
-              </div>
+              {/* ── Add Tasks — SIDE PANEL (conditional: only mounted when TASKS state) ── */}
+              {isTasksMode && (
+                <div
+                  id="add-tasks"
+                  className="active"
+                  style={{
+                    flex: '0 0 340px',
+                    width: '340px',
+                    height: '100%',
+                    overflowY: 'auto',
+                    borderLeft: '1px solid #E2E8F0',
+                    background: '#FAFAFA',
+                    boxShadow: '-2px 0 12px rgba(0,0,0,0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <AddTasks />
+                </div>
+              )}
+
+              {/* ── Task List — SIDE PANEL (conditional: only mounted when TASK_LIST state) ── */}
+              {isTaskListMode && (
+                <div
+                  id="task-list"
+                  className="active"
+                  style={{
+                    flex: '0 0 360px',
+                    width: '360px',
+                    height: '100%',
+                    overflowY: 'auto',
+                    borderLeft: '1px solid #E2E8F0',
+                    background: '#FAFAFA',
+                    boxShadow: '-2px 0 12px rgba(0,0,0,0.07)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <TaskList />
+                </div>
+              )}
 
             </div>
           </div>

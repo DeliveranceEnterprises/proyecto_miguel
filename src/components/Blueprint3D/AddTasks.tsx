@@ -8,6 +8,7 @@ import { useBlueprint3D } from './Blueprint3DApp';
 import { DevicesService, TasksService } from '../../client';
 import type { DevicePublic, TaskCreate, Waypoint } from '../../client';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
+import { ScenesService } from '../../client';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -32,8 +33,51 @@ function parseHashParams(url?: string | null): Record<string, string> {
 function getDeviceUidFromItem(item: any): string {
   const meta = item?.metadata;
   if (meta?.device_uid) return String(meta.device_uid);
+  if (meta?.deviceId) return String(meta.deviceId);   // key written by AddDevices
   const hash = parseHashParams(meta?.modelUrl);
   return hash.device_uid ? String(hash.device_uid) : '';
+}
+
+/**
+ * Multi-strategy search: find the scene item that represents `device`.
+ * Tries (in order):
+ *   1. metadata.deviceId or metadata.device_uid === device.uid  (exact UID)
+ *   2. metadata.deviceModel matches device.model                (model name)
+ *   3. metadata.modelUrl contains a normalised form of device.model (URL substring)
+ */
+function findDeviceItemInScene(items: any[], device: DevicePublic): any {
+  const norm = (s: string) => s.toLowerCase().trim().replace(/[\s\-.]+/g, '_');
+  const devUid = String(device.uid ?? '').toLowerCase();
+  const devModel = norm(String(device.model ?? ''));
+  const devName = norm(String(device.name ?? ''));
+
+  // Pass 1 – exact UID match
+  const byUid = items.find(it => {
+    const meta = it?.metadata;
+    const id = String(meta?.deviceId ?? meta?.device_uid ?? '').toLowerCase();
+    return id && id === devUid;
+  });
+  if (byUid) return byUid;
+
+  // Pass 2 – model name match
+  if (devModel) {
+    const byModel = items.find(it => {
+      const m = norm(String(it?.metadata?.deviceModel ?? ''));
+      return m && (m === devModel || m.includes(devModel) || devModel.includes(m));
+    });
+    if (byModel) return byModel;
+  }
+
+  // Pass 3 – model URL substring match (e.g. '/glb/devices/viggo_sc50.glb' contains 'viggo_sc50')
+  if (devModel || devName) {
+    const byUrl = items.find(it => {
+      const url = norm(String(it?.metadata?.modelUrl ?? ''));
+      return url && (url.includes(devModel) || url.includes(devName));
+    });
+    if (byUrl) return byUrl;
+  }
+
+  return undefined;
 }
 
 /**
@@ -75,7 +119,7 @@ function getViewerCanvas(): HTMLCanvasElement | null {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 const AddTasks: React.FC = () => {
-  const { blueprint3d, onStateChange } = useBlueprint3D();
+  const { blueprint3d, onStateChange, currentUID } = useBlueprint3D();
   const { getActiveOrganizationId } = useOrganizationContext();
 
   const [step, setStep] = useState<'select-device' | 'create-task'>('select-device');
@@ -287,7 +331,12 @@ const AddTasks: React.FC = () => {
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
-    return () => { clearPathGroup(); stopSimulation(); };
+    return () => {
+      // Only clean up if not actively simulating
+      if (!rafRef.current) {
+        clearPathGroup();
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -307,6 +356,22 @@ const AddTasks: React.FC = () => {
   const removeWaypoint = (idx: number) =>
     setWaypoints(prev => prev.filter((_, i) => i !== idx));
 
+  const savePosition = async () => {
+        if (!blueprint3d?.model || !currentUID) return;
+        try {
+            const data = JSON.parse(blueprint3d.model.exportSerialized());
+            await ScenesService.updateScene({
+                sceneId: currentUID,
+                requestBody: {
+                    floorplan: data.floorplan,
+                    items: data.items || [],
+                    organization_id: getActiveOrganizationId()
+                }
+            });
+        } catch (err) {
+            console.error('Error guardando posición:', err);
+        }
+    };
   // ── Simulation ────────────────────────────────────────────────────────────
   const stopSimulation = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -319,9 +384,14 @@ const AddTasks: React.FC = () => {
     if (!THREE || !blueprint3d?.model?.scene || !selectedDevice || waypoints.length === 0) return;
 
     const items = (blueprint3d.model.scene as any).getItems?.() ?? [];
-    const deviceItem = (items as any[]).find(it => getDeviceUidFromItem(it) === selectedDevice.uid);
+
+    // Debug: log what we have so we can see mismatches
+    console.log('[AddTasks] Looking for device:', selectedDevice.uid, selectedDevice.model);
+    console.log('[AddTasks] Scene items metadata:', (items as any[]).map((it: any) => it?.metadata));
+
+    const deviceItem = findDeviceItemInScene(items as any[], selectedDevice);
     if (!deviceItem) {
-      setSubmitResult({ success: false, message: 'Robot not found in the 3D scene.' });
+      setSubmitResult({ success: false, message: 'Robot not found in the 3D scene. Make sure you have added this robot with "Add Devices" before creating a task.' });
       return;
     }
 
@@ -330,34 +400,44 @@ const AddTasks: React.FC = () => {
     let idx = 0;
     setIsSimulating(true);
 
+    
+
     const animate = (now: number) => {
-      if (idx >= points.length) {
+        if (idx >= points.length) {
+            (blueprint3d as any)?.three?.needsUpdate?.();
+            savePosition();          // ← tarea completada
+            stopSimulation();
+            clearPathGroup();
+            setSubmitResult({ success: true, message: 'Simulation complete.' });
+            return;
+        }
+        const dt = (animate as any)._last ? (now - (animate as any)._last) / 1000 : 0.016;
+        (animate as any)._last = now;
+
+        const pos = deviceItem.position;
+        const target = points[idx];
+        const delta = new THREE.Vector3(target.x - pos.x, 0, target.z - pos.z);
+        const dist = delta.length();
+        const step = 120 * dt;
+
+        if (dist <= step) {
+            pos.x = target.x; pos.z = target.z;
+            idx++;
+        } else {
+            delta.normalize();
+            pos.x += delta.x * step;
+            pos.z += delta.z * step;
+            deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
+        }
+        if (deviceItem?.scene) deviceItem.scene.needsUpdate = true;
         (blueprint3d as any)?.three?.needsUpdate?.();
-        stopSimulation();
-        setSubmitResult({ success: true, message: 'Simulation complete.' });
-        return;
-      }
-      const dt = (animate as any)._last ? (now - (animate as any)._last) / 1000 : 0.016;
-      (animate as any)._last = now;
-
-      const pos = deviceItem.position;
-      const target = points[idx];
-      const delta = new THREE.Vector3(target.x - pos.x, 0, target.z - pos.z);
-      const dist = delta.length();
-      const step = 120 * dt;
-
-      if (dist <= step) { pos.x = target.x; pos.z = target.z; idx++; }
-      else {
-        delta.normalize();
-        pos.x += delta.x * step;
-        pos.z += delta.z * step;
-        deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
-      }
-      if (deviceItem?.scene) deviceItem.scene.needsUpdate = true;
-      (blueprint3d as any)?.three?.needsUpdate?.();
-      rafRef.current = requestAnimationFrame(animate);
+        rafRef.current = requestAnimationFrame(animate);
     };
     rafRef.current = requestAnimationFrame(animate);
+
+    // Close UI
+    onStateChange('DESIGN');
+    setTimeout(() => blueprint3d?.three?.updateWindowSize?.(), 150);
   };
 
   // ── Submit task ───────────────────────────────────────────────────────────
@@ -377,6 +457,10 @@ const AddTasks: React.FC = () => {
       const result = await TasksService.createTask({ requestBody: body });
       setSubmitResult({ success: true, message: `Task "${result.task_name}" created (ID: ${result.uid.substring(0, 8)}…)` });
       setTaskName('');
+
+      // Close UI after saving task
+      onStateChange('DESIGN');
+      setTimeout(() => blueprint3d?.three?.updateWindowSize?.(), 150);
     } catch (err: any) {
       const message = err?.body?.detail || err?.message || 'Unknown error';
       setSubmitResult({ success: false, message: String(message) });

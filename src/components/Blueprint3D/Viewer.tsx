@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FiSave, FiCodepen, FiPlus, FiEdit, FiX, FiClipboard } from 'react-icons/fi';
+import { FiSave, FiCodepen, FiPlus, FiEdit, FiX, FiClipboard, FiList } from 'react-icons/fi';
+
 import { useBlueprint3D } from './Blueprint3DApp';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 import { ScenesService } from '../../client';
@@ -189,11 +190,11 @@ const Viewer: React.FC = () => {
 
 
   const handleEnterEditMode = () => {
-    setIsEditingMode(true);
-    // Notify parent component about editing mode change
-    if (onEditingModeChange) {
-      onEditingModeChange(true);
-    }
+      setIsEditingMode(true);
+      onStateChange('DESIGN');  // ← añadir esta línea
+      if (onEditingModeChange) {
+          onEditingModeChange(true);
+      }
   };
 
   // Opción 1: Función flecha (la más común en React)
@@ -328,6 +329,36 @@ const Viewer: React.FC = () => {
               }}
             >
               <FiEdit style={{ marginRight: '6px' }} /> Edit Scene
+            </button>
+
+            <button
+              onClick={(e) => { e.preventDefault(); onStateChange('TASK_LIST' as any); }}
+              style={{
+                backgroundColor: '#6B46C1',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#553C9A';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#6B46C1';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <FiList style={{ marginRight: '6px' }} /> View Tasks
             </button>
           </>
         ) : (

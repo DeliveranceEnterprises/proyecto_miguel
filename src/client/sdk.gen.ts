@@ -775,6 +775,29 @@ export class TasksService {
             }
         });
     }
+
+
+    /**
+     * Delete Task
+     * Delete a task by ID.
+     * @param data The data for the request.
+     * @param data.uid
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteTask(data: { uid: string }): CancelablePromise<{ message: string }> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/tasks/{uid}',
+            path: {
+                uid: data.uid
+            },
+            errors: {
+                422: 'Validation Error',
+                404: 'Task Not Found'
+            }
+        });
+    }
     
 }
 
