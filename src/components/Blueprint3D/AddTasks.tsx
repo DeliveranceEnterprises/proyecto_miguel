@@ -41,38 +41,56 @@ function getDeviceUidFromItem(item: any): string {
 /**
  * Multi-strategy search: find the scene item that represents `device`.
  * Tries (in order):
- *   1. metadata.deviceId or metadata.device_uid === device.uid  (exact UID)
- *   2. metadata.deviceModel matches device.model                (model name)
- *   3. metadata.modelUrl contains a normalised form of device.model (URL substring)
+ *   1. metadata.device_uid or metadata.deviceId === device.uid  (exact UID — most reliable)
+ *   1b. metadata.deviceImage matches device.image               (image key — handles generic model:"robot")
+ *   1c. metadata.deviceMapKey derived from device.image         (DEVICE_MODEL_MAP key match)
+ *   2. metadata.deviceModel matches device.model                (only if model is not generic)
+ *   3. metadata.modelUrl contains device image key or name      (URL substring fallback)
  */
 function findDeviceItemInScene(items: any[], device: DevicePublic): any {
-  const norm = (s: string) => s.toLowerCase().trim().replace(/[\s\-.]+/g, '_');
+  const norm = (s?: string | null) => (s ?? '').toLowerCase().trim().replace(/[\s\-.]+/g, '_');
   const devUid = String(device.uid ?? '').toLowerCase();
-  const devModel = norm(String(device.model ?? ''));
-  const devName = norm(String(device.name ?? ''));
+  const devModel = norm(device.model);
+  const devName = norm(device.name);
+  // Derive image key (strip extension) — this is the most reliable type identifier
+  const devImgKey = device.image
+    ? norm(device.image.replace(/\.(png|jpg|jpeg|webp)$/i, ''))
+    : '';
 
   // Pass 1 – exact UID match
   const byUid = items.find(it => {
     const meta = it?.metadata;
-    const id = String(meta?.deviceId ?? meta?.device_uid ?? '').toLowerCase();
+    const id = String(meta?.device_uid ?? meta?.deviceId ?? '').toLowerCase();
     return id && id === devUid;
   });
   if (byUid) return byUid;
 
-  // Pass 2 – model name match
-  if (devModel) {
+  // Pass 1b – image key match (handles devices with generic model:"robot")
+  if (devImgKey) {
+    const byImg = items.find(it => {
+      const img = norm(String(it?.metadata?.deviceImage ?? '').replace(/\.(png|jpg|jpeg|webp)$/i, ''));
+      const mapKey = norm(it?.metadata?.deviceMapKey ?? '');
+      return (img && img === devImgKey) || (mapKey && mapKey === devImgKey);
+    });
+    if (byImg) return byImg;
+  }
+
+  // Pass 2 – model name match (skip if model is too generic, e.g. "robot")
+  const GENERIC_MODELS = ['robot', 'device', 'sensor', 'meter', 'iot'];
+  if (devModel && !GENERIC_MODELS.includes(devModel)) {
     const byModel = items.find(it => {
-      const m = norm(String(it?.metadata?.deviceModel ?? ''));
+      const m = norm(it?.metadata?.deviceModel ?? '');
       return m && (m === devModel || m.includes(devModel) || devModel.includes(m));
     });
     if (byModel) return byModel;
   }
 
   // Pass 3 – model URL substring match (e.g. '/glb/devices/viggo_sc50.glb' contains 'viggo_sc50')
-  if (devModel || devName) {
+  const searchKey = devImgKey || devModel || devName;
+  if (searchKey) {
     const byUrl = items.find(it => {
-      const url = norm(String(it?.metadata?.modelUrl ?? ''));
-      return url && (url.includes(devModel) || url.includes(devName));
+      const url = norm(it?.metadata?.modelUrl ?? '');
+      return url && url.includes(searchKey);
     });
     if (byUrl) return byUrl;
   }
@@ -357,21 +375,21 @@ const AddTasks: React.FC = () => {
     setWaypoints(prev => prev.filter((_, i) => i !== idx));
 
   const savePosition = async () => {
-        if (!blueprint3d?.model || !currentUID) return;
-        try {
-            const data = JSON.parse(blueprint3d.model.exportSerialized());
-            await ScenesService.updateScene({
-                sceneId: currentUID,
-                requestBody: {
-                    floorplan: data.floorplan,
-                    items: data.items || [],
-                    organization_id: getActiveOrganizationId()
-                }
-            });
-        } catch (err) {
-            console.error('Error guardando posición:', err);
+    if (!blueprint3d?.model || !currentUID) return;
+    try {
+      const data = JSON.parse(blueprint3d.model.exportSerialized());
+      await ScenesService.updateScene({
+        sceneId: currentUID,
+        requestBody: {
+          floorplan: data.floorplan,
+          items: data.items || [],
+          organization_id: getActiveOrganizationId()
         }
-    };
+      });
+    } catch (err) {
+      console.error('Error guardando posición:', err);
+    }
+  };
   // ── Simulation ────────────────────────────────────────────────────────────
   const stopSimulation = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -400,38 +418,38 @@ const AddTasks: React.FC = () => {
     let idx = 0;
     setIsSimulating(true);
 
-    
+
 
     const animate = (now: number) => {
-        if (idx >= points.length) {
-            (blueprint3d as any)?.three?.needsUpdate?.();
-            savePosition();          // ← tarea completada
-            stopSimulation();
-            clearPathGroup();
-            setSubmitResult({ success: true, message: 'Simulation complete.' });
-            return;
-        }
-        const dt = (animate as any)._last ? (now - (animate as any)._last) / 1000 : 0.016;
-        (animate as any)._last = now;
-
-        const pos = deviceItem.position;
-        const target = points[idx];
-        const delta = new THREE.Vector3(target.x - pos.x, 0, target.z - pos.z);
-        const dist = delta.length();
-        const step = 120 * dt;
-
-        if (dist <= step) {
-            pos.x = target.x; pos.z = target.z;
-            idx++;
-        } else {
-            delta.normalize();
-            pos.x += delta.x * step;
-            pos.z += delta.z * step;
-            deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
-        }
-        if (deviceItem?.scene) deviceItem.scene.needsUpdate = true;
+      if (idx >= points.length) {
         (blueprint3d as any)?.three?.needsUpdate?.();
-        rafRef.current = requestAnimationFrame(animate);
+        savePosition();          // ← tarea completada
+        stopSimulation();
+        clearPathGroup();
+        setSubmitResult({ success: true, message: 'Simulation complete.' });
+        return;
+      }
+      const dt = (animate as any)._last ? (now - (animate as any)._last) / 1000 : 0.016;
+      (animate as any)._last = now;
+
+      const pos = deviceItem.position;
+      const target = points[idx];
+      const delta = new THREE.Vector3(target.x - pos.x, 0, target.z - pos.z);
+      const dist = delta.length();
+      const step = 120 * dt;
+
+      if (dist <= step) {
+        pos.x = target.x; pos.z = target.z;
+        idx++;
+      } else {
+        delta.normalize();
+        pos.x += delta.x * step;
+        pos.z += delta.z * step;
+        deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
+      }
+      if (deviceItem?.scene) deviceItem.scene.needsUpdate = true;
+      (blueprint3d as any)?.three?.needsUpdate?.();
+      rafRef.current = requestAnimationFrame(animate);
     };
     rafRef.current = requestAnimationFrame(animate);
 

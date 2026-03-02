@@ -29,32 +29,49 @@ function normalise(s: string): string {
 
 /** Multi-strategy lookup — same logic as AddTasks.tsx findDeviceItemInScene */
 function findDeviceItemInScene(items: any[], device: DevicePublic): any {
+    const norm = (s?: string | null) => (s ?? '').toLowerCase().trim().replace(/[\s\-.]+/g, '_');
     const devUid = String(device.uid ?? '').toLowerCase();
-    const devModel = normalise(String(device.model ?? ''));
-    const devName = normalise(String(device.name ?? ''));
+    const devModel = norm(device.model);
+    const devName = norm(device.name);
+    // Derive image key (strip extension) — most reliable type identifier
+    const devImgKey = device.image
+        ? norm(device.image.replace(/\.(png|jpg|jpeg|webp)$/i, ''))
+        : '';
 
     // Pass 1 – exact UID
     const byUid = items.find(it => {
         const meta = it?.metadata;
-        const id = String(meta?.deviceId ?? meta?.device_uid ?? '').toLowerCase();
+        const id = String(meta?.device_uid ?? meta?.deviceId ?? '').toLowerCase();
         return id && id === devUid;
     });
     if (byUid) return byUid;
 
-    // Pass 2 – model name
-    if (devModel) {
+    // Pass 1b – image key match (handles devices with generic model:"robot")
+    if (devImgKey) {
+        const byImg = items.find(it => {
+            const img = norm(String(it?.metadata?.deviceImage ?? '').replace(/\.(png|jpg|jpeg|webp)$/i, ''));
+            const mapKey = norm(it?.metadata?.deviceMapKey ?? '');
+            return (img && img === devImgKey) || (mapKey && mapKey === devImgKey);
+        });
+        if (byImg) return byImg;
+    }
+
+    // Pass 2 – model name (skip if generic like "robot")
+    const GENERIC_MODELS = ['robot', 'device', 'sensor', 'meter', 'iot'];
+    if (devModel && !GENERIC_MODELS.includes(devModel)) {
         const byModel = items.find(it => {
-            const m = normalise(String(it?.metadata?.deviceModel ?? ''));
+            const m = norm(it?.metadata?.deviceModel ?? '');
             return m && (m === devModel || m.includes(devModel) || devModel.includes(m));
         });
         if (byModel) return byModel;
     }
 
     // Pass 3 – model URL substring
-    if (devModel || devName) {
+    const searchKey = devImgKey || devModel || devName;
+    if (searchKey) {
         const byUrl = items.find(it => {
-            const url = normalise(String(it?.metadata?.modelUrl ?? ''));
-            return url && (url.includes(devModel) || url.includes(devName));
+            const url = norm(it?.metadata?.modelUrl ?? '');
+            return url && url.includes(searchKey);
         });
         if (byUrl) return byUrl;
     }
@@ -217,7 +234,7 @@ const TaskList: React.FC = () => {
         let idx = 0;
         setSimulating(task.uid);
 
-       const animate = (now: number) => {
+        const animate = (now: number) => {
             if (idx >= pts.length) {
                 (blueprint3d as any)?.three?.needsUpdate?.();
                 savePosition();          // ← tarea completada

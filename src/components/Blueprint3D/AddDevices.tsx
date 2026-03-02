@@ -29,16 +29,17 @@ const DEVICE_MODEL_MAP: Record<string, { model: string; thumbnail: string; type:
 const NOT_FOUND_THUMBNAIL = '/public/assets/images/devices/image_not_found.png';
 
 // Normalise a string to match DEVICE_MODEL_MAP keys
-const normalise = (s: string) => s.toLowerCase().trim().replace(/[\s\-.]+/g, '_');
+const normalise = (s?: string | null) => (s ?? '').toLowerCase().trim().replace(/[\s\-.]+/g, '_');
 
 // For a given DEVICE_MODEL_MAP key, find the matching device from the API
 function findApiDevice(mapKey: string, apiDevices: DevicePublic[]): DevicePublic | null {
   for (const device of apiDevices) {
     if (device.image) {
       const imgKey = normalise(device.image.replace(/\.(png|jpg|jpeg|webp)$/i, ''));
-      if (imgKey === mapKey || imgKey.includes(mapKey) || mapKey.includes(imgKey)) return device;
+      if (imgKey && (imgKey === mapKey || imgKey.includes(mapKey) || mapKey.includes(imgKey))) return device;
     }
-    if (normalise(device.model) === mapKey) return device;
+    const modelKey = normalise(device.model);
+    if (modelKey && modelKey === mapKey) return device;
   }
   return null;
 }
@@ -137,9 +138,11 @@ const AddDevices: React.FC = () => {
     const imgKey = device.image
       ? normalise(device.image.replace(/\.(png|jpg|jpeg|webp)$/i, ''))
       : normalise(device.model);
-    const mapKey = Object.keys(DEVICE_MODEL_MAP).find(
-      k => k === imgKey || imgKey.includes(k) || k.includes(imgKey)
-    );
+    const mapKey = imgKey
+      ? Object.keys(DEVICE_MODEL_MAP).find(
+        k => k === imgKey || imgKey.includes(k) || k.includes(imgKey)
+      )
+      : undefined;
     if (!mapKey) return;
     const asset = DEVICE_MODEL_MAP[mapKey];
     const isGLB = asset.model.toLowerCase().endsWith('.glb');
@@ -153,8 +156,9 @@ const AddDevices: React.FC = () => {
       device_uid: device.uid,          // canonical field read by AddTasks
       deviceId: device.uid,            // legacy field
       deviceCategory: device.category ?? '',
-      deviceModel: device.model,       // used as fallback match in AddTasks
-      deviceImage: device.image ?? '',
+      deviceModel: device.model ?? '',  // may be generic (e.g. 'robot')
+      deviceImage: device.image ?? '',  // use image as unique type identifier
+      deviceMapKey: mapKey,             // normalised DEVICE_MODEL_MAP key — most reliable
       deviceEnabled: device.enabled ?? false,
     };
     try {
@@ -178,11 +182,12 @@ const AddDevices: React.FC = () => {
       itemType: asset.type,
       format: isGLB ? 'glb' : 'json',
       // ── Identity fields (both names so AddTasks always finds this item) ──
-      device_uid: apiDevice?.uid ?? '',  // canonical field — empty if no API match
+      device_uid: apiDevice?.uid ?? '',   // canonical field — empty if no API match
       deviceId: apiDevice?.uid ?? mapKey, // legacy field
       deviceCategory: apiDevice?.category ?? '',
-      deviceModel: apiDevice?.model ?? mapKey,  // used as fallback match in AddTasks
-      deviceImage: apiDevice?.image ?? mapKey,
+      deviceModel: apiDevice?.model ?? '', // may be generic (e.g. 'robot')
+      deviceImage: apiDevice?.image ?? '', // use image as unique type identifier
+      deviceMapKey: mapKey,               // normalised DEVICE_MODEL_MAP key — most reliable
       deviceEnabled: apiDevice?.enabled ?? false,
     };
 
