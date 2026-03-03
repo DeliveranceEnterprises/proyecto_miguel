@@ -629,18 +629,38 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 overflow: 'hidden',
               } : {}}
             >
-              {/* ── 3D Viewer ─────────────────────────────────────────────── */}
+              {/*
+               * ── 3D Viewer ──────────────────────────────────────────────
+               * CRITICAL: Three.js appends its <canvas> directly into #viewer.
+               * React MUST NOT render any children inside #viewer, otherwise
+               * Three.js destroys React's comment-node placeholders and causes:
+               *   "insertBefore: The node before which the new node is to be
+               *    inserted is not a child of this node"
+               *
+               * Solution: #viewer is a self-closing React node (no children).
+               * <Viewer /> lives in #viewer-controls — a sibling div with
+               * position:absolute that visually overlays the whole .main area.
+               */}
               <div
                 id="viewer"
                 className={appState === 'DESIGN' || appState === 'TASKS' || appState === 'TASK_LIST' ? 'active' : ''}
                 style={isSidePanel ? {
-
                   flex: '1 1 0%',
                   minWidth: 0,
                   height: '100%',
-                  cursor: 'crosshair',
                   position: 'relative',
                 } : undefined}
+              />
+
+              {/* ── React controls overlay (always visible over any panel) ── */}
+              <div
+                id="viewer-controls"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                  zIndex: 20,
+                }}
               >
                 <Viewer />
               </div>

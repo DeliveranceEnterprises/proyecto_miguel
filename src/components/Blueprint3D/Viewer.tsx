@@ -9,7 +9,7 @@ import useCustomToast from '../../hooks/useCustomToast';
 import { passwordRules } from '../../utils';
 
 const Viewer: React.FC = () => {
-  const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange } = useBlueprint3D();
+  const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange, appState } = useBlueprint3D();
   const { getActiveOrganizationId } = useOrganizationContext();
   const showToast = useCustomToast();
   const [isEditingMode, setIsEditingMode] = useState(false);
@@ -190,11 +190,11 @@ const Viewer: React.FC = () => {
 
 
   const handleEnterEditMode = () => {
-      setIsEditingMode(true);
-      onStateChange('DESIGN');  // ← añadir esta línea
-      if (onEditingModeChange) {
-          onEditingModeChange(true);
-      }
+    setIsEditingMode(true);
+    onStateChange('DESIGN');  // ← añadir esta línea
+    if (onEditingModeChange) {
+      onEditingModeChange(true);
+    }
   };
 
   // Opción 1: Función flecha (la más común en React)
@@ -295,257 +295,263 @@ const Viewer: React.FC = () => {
   }, [currentUID, blueprint3d]);
 
   return (
-    <>
-      {/* Main Controls */}
-      <div id="main-controls" style={{ display: 'flex', gap: '8px', padding: '12px' }}>
-        {!isEditingMode ? (
-          // AQUI ESTAN LOS CAMBIOS PRINCIPALES
-          <>
-            <button
-              onClick={handleEnterEditMode}
-              style={{
-                backgroundColor: '#596A6E',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#4A5B5F';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#596A6E';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiEdit style={{ marginRight: '6px' }} /> Edit Scene
-            </button>
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {/* Main Controls — hidden when a side panel (SHOP, DEVICES, TASKS) is active */}
+      <div
+        id="main-controls"
+        style={{
+          display: (appState === 'SHOP' || appState === 'DEVICES' || appState === 'TASKS' || appState === 'FLOORPLAN') ? 'none' : 'flex',
+          gap: '8px',
+          padding: '12px',
+          pointerEvents: 'auto',
+        }}
+      >
+        {/* VIEW MODE buttons: always in DOM, toggled with display not conditional render */}
+        <div style={{ display: !isEditingMode ? 'contents' : 'none' }}>
+          <button
+            onClick={handleEnterEditMode}
+            style={{
+              backgroundColor: '#596A6E',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#4A5B5F';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#596A6E';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiEdit style={{ marginRight: '6px' }} /> Edit Scene
+          </button>
 
-            <button
-              onClick={(e) => { e.preventDefault(); onStateChange('TASK_LIST' as any); }}
-              style={{
-                backgroundColor: '#6B46C1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#553C9A';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#6B46C1';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiList style={{ marginRight: '6px' }} /> View Tasks
-            </button>
-          </>
-        ) : (
-          // Show all editing buttons when in editing mode
-          <>
-            <button
-              onClick={handleSaveDesign}
-              style={{
-                backgroundColor: '#48BB78',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#38A169';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#48BB78';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiSave style={{ marginRight: '6px' }} /> Save Plan
-            </button>
+          <button
+            onClick={(e) => { e.preventDefault(); onStateChange('TASK_LIST' as any); }}
+            style={{
+              backgroundColor: '#6B46C1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#553C9A';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#6B46C1';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiList style={{ marginRight: '6px' }} /> View Tasks
+          </button>
+        </div>
 
-            <button
-              onClick={(e) => { e.preventDefault(); onStateChange('FLOORPLAN'); }}
-              style={{
-                backgroundColor: '#596A6E',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#4A5B5F';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#596A6E';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiCodepen style={{ marginRight: '6px' }} /> Edit Floorplan
-            </button>
+        {/* EDIT MODE buttons: always in DOM, toggled with display not conditional render */}
+        <div style={{ display: isEditingMode ? 'contents' : 'none' }}>
+          <button
+            onClick={handleSaveDesign}
+            style={{
+              backgroundColor: '#48BB78',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#38A169';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#48BB78';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiSave style={{ marginRight: '6px' }} /> Save Plan
+          </button>
 
-            <button
-              onClick={(e) => { e.preventDefault(); onStateChange('SHOP'); }}
-              style={{
-                backgroundColor: '#EEEEEE',
-                color: '#1A202C',
-                border: '1px solid #E2E8F0',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#E2E8F0';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#EEEEEE';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiPlus style={{ marginRight: '6px' }} /> Add Items
-            </button>
+          <button
+            onClick={(e) => { e.preventDefault(); onStateChange('FLOORPLAN'); }}
+            style={{
+              backgroundColor: '#596A6E',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#4A5B5F';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#596A6E';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiCodepen style={{ marginRight: '6px' }} /> Edit Floorplan
+          </button>
 
-            <button
-              onClick={(e) => { e.preventDefault(); onStateChange('DEVICES'); }}
-              style={{
-                backgroundColor: '#2B6CB0',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#2C5282';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#2B6CB0';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiPlus style={{ marginRight: '6px' }} /> Add Devices
-            </button>
+          <button
+            onClick={(e) => { e.preventDefault(); onStateChange('SHOP'); }}
+            style={{
+              backgroundColor: '#EEEEEE',
+              color: '#1A202C',
+              border: '1px solid #E2E8F0',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#E2E8F0';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#EEEEEE';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiPlus style={{ marginRight: '6px' }} /> Add Items
+          </button>
 
-            <button
-              onClick={(e) => { e.preventDefault(); onStateChange('TASKS'); }}
-              style={{
-                backgroundColor: '#DD6B20',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#C05621';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#DD6B20';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiClipboard style={{ marginRight: '6px' }} /> Add Tasks
-            </button>
+          <button
+            onClick={(e) => { e.preventDefault(); onStateChange('DEVICES'); }}
+            style={{
+              backgroundColor: '#2B6CB0',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#2C5282';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#2B6CB0';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiPlus style={{ marginRight: '6px' }} /> Add Devices
+          </button>
 
-            <button
-              onClick={handleCancelEditing}
-              style={{
-                backgroundColor: '#E53E3E',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                marginLeft: 'auto'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#C53030';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#E53E3E';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-              }}
-            >
-              <FiX style={{ marginRight: '6px' }} /> Cancel Editing
-            </button>
-          </>
-        )}
+          <button
+            onClick={(e) => { e.preventDefault(); onStateChange('TASKS'); }}
+            style={{
+              backgroundColor: '#DD6B20',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#C05621';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#DD6B20';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiClipboard style={{ marginRight: '6px' }} /> Add Tasks
+          </button>
+
+          <button
+            onClick={handleCancelEditing}
+            style={{
+              backgroundColor: '#E53E3E',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+              marginLeft: 'auto'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#C53030';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#E53E3E';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+            }}
+          >
+            <FiX style={{ marginRight: '6px' }} /> Cancel Editing
+          </button>
+        </div>
       </div>
 
       {/* Camera Controls */}
@@ -599,7 +605,7 @@ const Viewer: React.FC = () => {
         </div>
       )}
 
-    </>
+    </div>
   );
 };
 
