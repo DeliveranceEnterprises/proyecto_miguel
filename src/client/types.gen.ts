@@ -379,6 +379,17 @@ export type StatusPublic = {
     last_connection?: (string | null);
 };
 
+export type StatusUpdate = {
+    status?: (string | null);
+    battery_level?: (number | null);
+    coordinates_x?: (number | null);
+    coordinates_y?: (number | null);
+    level?: (number | null);
+    task_id?: (string | null);
+    error_code?: (number | null);
+    last_connection?: (string | null);
+};
+
 export type TaskCreate = {
     /**
      * Unique device identifier
@@ -616,6 +627,13 @@ export type DevicesGetDeviceStatusData = {
 };
 
 export type DevicesGetDeviceStatusResponse = (StatusPublic);
+
+export type DevicesUpdateDeviceStatusData = {
+    uid: string;
+    requestBody: StatusUpdate;
+};
+
+export type DevicesUpdateDeviceStatusResponse = (StatusPublic);
 
 export type DevicesGetDeviceTasksData = {
     uid: string;

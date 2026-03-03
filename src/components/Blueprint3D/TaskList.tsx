@@ -210,11 +210,18 @@ const TaskList: React.FC = () => {
     };
 
     // ── Simulation ────────────────────────────────────────────────────────────
-    const stopSim = () => {
+    const stopSim = (deviceUid?: string) => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
         setSimulating(null);
         clearPath();
+        // Update device status to Idle
+        if (deviceUid) {
+            DevicesService.updateDeviceStatus({
+                uid: deviceUid,
+                requestBody: { status: 'Idle', task_id: null },
+            }).catch(() => {/* ignore */ });
+        }
     };
 
     const runTask = (task: TaskPublic, device: DevicePublic) => {
@@ -232,13 +239,27 @@ const TaskList: React.FC = () => {
         const y = Number(deviceItem.position?.y ?? 0);
         const pts = task.waypoints.map(wp => new THREE.Vector3(wp.coordinates_x, y, wp.coordinates_y));
         let idx = 0;
+        let frameCount = 0;
+        const deviceUid = device.uid;
         setSimulating(task.uid);
+
+        // Mark device as Running in the API
+        DevicesService.updateDeviceStatus({
+            uid: deviceUid,
+            requestBody: {
+                status: 'Running',
+                task_id: task.uid,
+                coordinates_x: deviceItem.position?.x ?? 0,
+                coordinates_y: deviceItem.position?.z ?? 0,
+                last_connection: new Date().toISOString(),
+            },
+        }).catch(() => {/* ignore */ });
 
         const animate = (now: number) => {
             if (idx >= pts.length) {
                 (blueprint3d as any)?.three?.needsUpdate?.();
                 savePosition();          // ← tarea completada
-                stopSim();
+                stopSim(deviceUid);
                 return;
             }
             const dt = (animate as any)._last ? (now - (animate as any)._last) / 1000 : 0.016;
@@ -260,6 +281,20 @@ const TaskList: React.FC = () => {
                 pos.z += delta.z * step;
                 deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
             }
+
+            // Update coordinates in API every ~30 frames (~0.5 s at 60fps)
+            frameCount++;
+            if (frameCount % 30 === 0) {
+                DevicesService.updateDeviceStatus({
+                    uid: deviceUid,
+                    requestBody: {
+                        coordinates_x: pos.x,
+                        coordinates_y: pos.z,
+                        last_connection: new Date().toISOString(),
+                    },
+                }).catch(() => {/* ignore */ });
+            }
+
             if (deviceItem?.scene) deviceItem.scene.needsUpdate = true;
             (blueprint3d as any)?.three?.needsUpdate?.();
             rafRef.current = requestAnimationFrame(animate);

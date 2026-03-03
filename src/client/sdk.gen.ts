@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { DevicesReadDevicesData, DevicesReadDevicesResponse, DevicesCreateDeviceData, DevicesCreateDeviceResponse, DevicesReadDevicesStatusData, DevicesReadDevicesStatusResponse, DevicesReadDeviceData, DevicesReadDeviceResponse, DevicesUpdateDeviceData, DevicesUpdateDeviceResponse, DevicesDeleteDeviceData, DevicesDeleteDeviceResponse, DevicesGetDevicesOwnData, DevicesGetDevicesOwnResponse, DevicesGetDeviceStatusData, DevicesGetDeviceStatusResponse, DevicesGetDeviceTasksData, DevicesGetDeviceTasksResponse, DevicesCreateDeviceTaskData, DevicesCreateDeviceTaskResponse, DevicesGetDeviceReadingsData, DevicesGetDeviceReadingsResponse, DevicesGetFilteredDeviceReadingsData, DevicesGetFilteredDeviceReadingsResponse, DevicesUpdateDeviceListResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, OrganizationsReadOrganizationsData, OrganizationsReadOrganizationsResponse, OrganizationsCreateOrganizationData, OrganizationsCreateOrganizationResponse, OrganizationsReadOrganizationData, OrganizationsReadOrganizationResponse, OrganizationsUpdateOrganizationData, OrganizationsUpdateOrganizationResponse, OrganizationsDeleteOrganizationData, OrganizationsDeleteOrganizationResponse, OrganizationsReadChildOrganizationsData, OrganizationsReadChildOrganizationsResponse, OrganizationsReadOrganizationScenesData, OrganizationsReadOrganizationScenesResponse, OrganizationsUploadOrganizationImageData, OrganizationsUploadOrganizationImageResponse, PrivateCreateUserData, PrivateCreateUserResponse, ScenesReadScenesData, ScenesReadScenesResponse, ScenesCreateSceneData, ScenesCreateSceneResponse, ScenesReadSceneData, ScenesReadSceneResponse, ScenesUpdateSceneData, ScenesUpdateSceneResponse, ScenesDeleteSceneData, ScenesDeleteSceneResponse, TasksReadTasksData, TasksReadTasksResponse, TasksCreateTaskData, TasksCreateTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersUploadImageData, UsersUploadImageResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { DevicesReadDevicesData, DevicesReadDevicesResponse, DevicesCreateDeviceData, DevicesCreateDeviceResponse, DevicesReadDevicesStatusData, DevicesReadDevicesStatusResponse, DevicesReadDeviceData, DevicesReadDeviceResponse, DevicesUpdateDeviceData, DevicesUpdateDeviceResponse, DevicesDeleteDeviceData, DevicesDeleteDeviceResponse, DevicesGetDevicesOwnData, DevicesGetDevicesOwnResponse, DevicesGetDeviceStatusData, DevicesGetDeviceStatusResponse, DevicesUpdateDeviceStatusData, DevicesUpdateDeviceStatusResponse, DevicesGetDeviceTasksData, DevicesGetDeviceTasksResponse, DevicesCreateDeviceTaskData, DevicesCreateDeviceTaskResponse, DevicesGetDeviceReadingsData, DevicesGetDeviceReadingsResponse, DevicesGetFilteredDeviceReadingsData, DevicesGetFilteredDeviceReadingsResponse, DevicesUpdateDeviceListResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, OrganizationsReadOrganizationsData, OrganizationsReadOrganizationsResponse, OrganizationsCreateOrganizationData, OrganizationsCreateOrganizationResponse, OrganizationsReadOrganizationData, OrganizationsReadOrganizationResponse, OrganizationsUpdateOrganizationData, OrganizationsUpdateOrganizationResponse, OrganizationsDeleteOrganizationData, OrganizationsDeleteOrganizationResponse, OrganizationsReadChildOrganizationsData, OrganizationsReadChildOrganizationsResponse, OrganizationsReadOrganizationScenesData, OrganizationsReadOrganizationScenesResponse, OrganizationsUploadOrganizationImageData, OrganizationsUploadOrganizationImageResponse, PrivateCreateUserData, PrivateCreateUserResponse, ScenesReadScenesData, ScenesReadScenesResponse, ScenesCreateSceneData, ScenesCreateSceneResponse, ScenesReadSceneData, ScenesReadSceneResponse, ScenesUpdateSceneData, ScenesUpdateSceneResponse, ScenesDeleteSceneData, ScenesDeleteSceneResponse, TasksReadTasksData, TasksReadTasksResponse, TasksCreateTaskData, TasksCreateTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersUploadImageData, UsersUploadImageResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class DevicesService {
     /**
@@ -28,7 +28,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Create Device
      * Create new device.
@@ -48,7 +48,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Read Devices Status
      * Retrieve devices status from the mock database.
@@ -71,7 +71,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Read Device
      * Get device by ID.
@@ -92,7 +92,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Update Device
      * Update a device.
@@ -116,7 +116,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Delete Device
      * Delete a device.
@@ -137,7 +137,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Get Devices Own
      * Retrieve all devices that match a given owner_id.
@@ -164,7 +164,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Get Device Status
      * Get the current status of a device by UID.
@@ -185,7 +185,31 @@ export class DevicesService {
             }
         });
     }
-    
+
+    /**
+     * Update Device Status
+     * Update the status of a device by UID (e.g. coordinates, running state).
+     * @param data The data for the request.
+     * @param data.uid
+     * @param data.requestBody
+     * @returns StatusPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateDeviceStatus(data: DevicesUpdateDeviceStatusData): CancelablePromise<DevicesUpdateDeviceStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/devices/{uid}/status',
+            path: {
+                uid: data.uid
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Get Device Tasks
      * Get the task list of a device by UID.
@@ -206,7 +230,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Create Device Task
      * Create a task for a specific device.
@@ -230,7 +254,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Get Device Readings
      * Get device readings filtered by UID and resolution.
@@ -253,7 +277,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Get Filtered Device Readings
      * Get device readings filtered by UID, resolution, and measure type.
@@ -278,7 +302,7 @@ export class DevicesService {
             }
         });
     }
-    
+
     /**
      * Update Device List
      * Retrieve devices from a 3rd party API and insert them into the mock database if they don't already exist.
@@ -291,7 +315,7 @@ export class DevicesService {
             url: '/api/v1/devices/update_device_list'
         });
     }
-    
+
 }
 
 export class LoginService {
@@ -314,7 +338,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Test Token
      * Test access token
@@ -327,7 +351,7 @@ export class LoginService {
             url: '/api/v1/login/test-token'
         });
     }
-    
+
     /**
      * Recover Password
      * Password Recovery
@@ -348,7 +372,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Reset Password
      * Reset password
@@ -368,7 +392,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Recover Password Html Content
      * HTML Content for Password Recovery
@@ -389,7 +413,7 @@ export class LoginService {
             }
         });
     }
-    
+
 }
 
 export class OrganizationsService {
@@ -415,7 +439,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Create Organization
      * Create new organization.
@@ -435,7 +459,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Read Organization
      * Get organization by ID.
@@ -456,7 +480,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Update Organization
      * Update an organization.
@@ -480,7 +504,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Delete Organization
      * Delete an organization.
@@ -501,7 +525,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Read Child Organizations
      * Get child organizations for a given organization ID.
@@ -522,7 +546,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Read Organization Scenes
      * Get all scenes for a specific organization.
@@ -549,7 +573,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
     /**
      * Upload Organization Image
      * Upload an image for an organization.
@@ -573,7 +597,7 @@ export class OrganizationsService {
             }
         });
     }
-    
+
 }
 
 export class PrivateService {
@@ -596,7 +620,7 @@ export class PrivateService {
             }
         });
     }
-    
+
 }
 
 export class ScenesService {
@@ -622,7 +646,7 @@ export class ScenesService {
             }
         });
     }
-    
+
     /**
      * Create Scene
      * Create new scene.
@@ -642,7 +666,7 @@ export class ScenesService {
             }
         });
     }
-    
+
     /**
      * Read Scene
      * Get scene by ID.
@@ -663,7 +687,7 @@ export class ScenesService {
             }
         });
     }
-    
+
     /**
      * Update Scene
      * Update a scene.
@@ -687,7 +711,7 @@ export class ScenesService {
             }
         });
     }
-    
+
     /**
      * Delete Scene
      * Delete a scene.
@@ -708,7 +732,7 @@ export class ScenesService {
             }
         });
     }
-    
+
 }
 
 export class TasksService {
@@ -734,7 +758,7 @@ export class TasksService {
             }
         });
     }
-    
+
     /**
      * Create Task
      * Create a new task.
@@ -754,7 +778,7 @@ export class TasksService {
             }
         });
     }
-    
+
     /**
      * Read Task
      * Get task by ID.
@@ -798,7 +822,7 @@ export class TasksService {
             }
         });
     }
-    
+
 }
 
 export class UsersService {
@@ -824,7 +848,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Create User
      * Create new user.
@@ -844,7 +868,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Read User Me
      * Get current user.
@@ -857,7 +881,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-    
+
     /**
      * Delete User Me
      * Delete own user.
@@ -870,7 +894,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-    
+
     /**
      * Update User Me
      * Update own user.
@@ -890,7 +914,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Update Password Me
      * Update own password.
@@ -910,7 +934,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Register User
      * Create new user without the need to be logged in.
@@ -930,7 +954,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Read User By Id
      * Get a specific user by id.
@@ -951,7 +975,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Update User
      * Update a user.
@@ -975,7 +999,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Delete User
      * Delete a user.
@@ -996,7 +1020,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Upload Image
      * Upload an image for the current user.
@@ -1016,7 +1040,7 @@ export class UsersService {
             }
         });
     }
-    
+
 }
 
 export class UtilsService {
@@ -1040,7 +1064,7 @@ export class UtilsService {
             }
         });
     }
-    
+
     /**
      * Health Check
      * @returns boolean Successful Response
@@ -1052,5 +1076,5 @@ export class UtilsService {
             url: '/api/v1/utils/health-check/'
         });
     }
-    
+
 }

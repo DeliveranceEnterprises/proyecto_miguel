@@ -161,6 +161,7 @@ const AddTasks: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
   const rafRef = useRef<number | null>(null);
   const pathGroupRef = useRef<any>(null);
+  const lastTaskUidRef = useRef<string | null>(null); // UID of the last created task
 
   // ── Load devices ──────────────────────────────────────────────────────────
   const loadDevices = async () => {
@@ -391,10 +392,18 @@ const AddTasks: React.FC = () => {
     }
   };
   // ── Simulation ────────────────────────────────────────────────────────────
-  const stopSimulation = () => {
+  const stopSimulation = (deviceUid?: string) => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     setIsSimulating(false);
+    // Update device status to Idle when simulation stops
+    const uid = deviceUid ?? selectedDevice?.uid;
+    if (uid) {
+      DevicesService.updateDeviceStatus({
+        uid,
+        requestBody: { status: 'Idle', task_id: null },
+      }).catch(() => {/* ignore status update errors */ });
+    }
   };
 
   const startSimulation = () => {
@@ -416,15 +425,27 @@ const AddTasks: React.FC = () => {
     const y = Number(deviceItem.position?.y ?? 0);
     const points = waypoints.map(wp => new THREE.Vector3(wp.coordinates_x, y, wp.coordinates_y));
     let idx = 0;
+    let frameCount = 0;
+    const deviceUid = selectedDevice.uid;
     setIsSimulating(true);
 
-
+    // Mark device as Running in the API
+    DevicesService.updateDeviceStatus({
+      uid: deviceUid,
+      requestBody: {
+        status: 'Running',
+        task_id: lastTaskUidRef.current ?? undefined,
+        coordinates_x: deviceItem.position?.x ?? 0,
+        coordinates_y: deviceItem.position?.z ?? 0,
+        last_connection: new Date().toISOString(),
+      },
+    }).catch(() => {/* ignore status update errors */ });
 
     const animate = (now: number) => {
       if (idx >= points.length) {
         (blueprint3d as any)?.three?.needsUpdate?.();
         savePosition();          // ← tarea completada
-        stopSimulation();
+        stopSimulation(deviceUid);
         clearPathGroup();
         setSubmitResult({ success: true, message: 'Simulation complete.' });
         return;
@@ -447,6 +468,20 @@ const AddTasks: React.FC = () => {
         pos.z += delta.z * step;
         deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
       }
+
+      // Update coordinates in API every ~30 frames (~0.5 s at 60fps)
+      frameCount++;
+      if (frameCount % 30 === 0) {
+        DevicesService.updateDeviceStatus({
+          uid: deviceUid,
+          requestBody: {
+            coordinates_x: pos.x,
+            coordinates_y: pos.z,
+            last_connection: new Date().toISOString(),
+          },
+        }).catch(() => {/* ignore */ });
+      }
+
       if (deviceItem?.scene) deviceItem.scene.needsUpdate = true;
       (blueprint3d as any)?.three?.needsUpdate?.();
       rafRef.current = requestAnimationFrame(animate);
@@ -473,7 +508,10 @@ const AddTasks: React.FC = () => {
         waypoints,
       };
       const result = await TasksService.createTask({ requestBody: body });
+      // Remember the task UID so startSimulation can attach it to the device status
+      lastTaskUidRef.current = result.uid;
       setSubmitResult({ success: true, message: `Task "${result.task_name}" created (ID: ${result.uid.substring(0, 8)}…)` });
+
       setTaskName('');
 
       // Close UI after saving task
