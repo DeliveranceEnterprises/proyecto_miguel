@@ -152,8 +152,15 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   /** Shared with TaskList — holds the uid of the device currently simulating */
   const simulatingUidRef = useRef<string | null>(null);
 
+  const activeItemUid = selectedItem?.metadata?.device_uid || selectedItem?.metadata?.deviceId || null;
+
   // ── Bidirectional sync hook (500 ms polling) ─────────────────────────────
-  useDeviceSync({ blueprint3d, currentUID, simulatingUidRef });
+  useDeviceSync({ 
+    blueprint3d, 
+    currentUID, 
+    simulatingUidRef,
+    selectedItemUid: activeItemUid ? String(activeItemUid).toLowerCase() : null
+  });
 
   // Track when component mounts
   useEffect(() => {

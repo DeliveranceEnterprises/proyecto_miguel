@@ -2,10 +2,10 @@
  * useDeviceSync — sincronización bidireccional entre mock_status (API) y la escena 3D.
  *
  * Cada 500 ms:
- *  1. Status → Escena: lee todos los estados de la API y mueve los items 3D
- *     a sus coordenadas (salvo que ese dispositivo esté siendo simulado).
- *  2. Escena → Status: detecta items que el usuario ha movido y sube
- *     sus nuevas coordenadas a la API.
+ * 1. Status → Escena: lee todos los estados de la API y mueve los items 3D
+ * a sus coordenadas (salvo que ese dispositivo esté siendo simulado o editado por el usuario).
+ * 2. Escena → Status: detecta items que el usuario ha movido y sube
+ * sus nuevas coordenadas a la API.
  */
 
 import { useEffect, useRef } from 'react';
@@ -18,9 +18,10 @@ interface SyncOptions {
   blueprint3d: any;
   currentUID: string;
   simulatingUidRef: React.MutableRefObject<string | null>;
+  selectedItemUid?: string | null; // <-- Recibimos el ID del objeto que estás tocando
 }
 
-export function useDeviceSync({ blueprint3d, currentUID, simulatingUidRef }: SyncOptions): void {
+export function useDeviceSync({ blueprint3d, currentUID, simulatingUidRef, selectedItemUid = null }: SyncOptions): void {
   // Snapshot de posiciones del tick anterior { [device_uid]: {x, z} }
   const prevPositionsRef = useRef<Record<string, { x: number; z: number }>>({});
   // Evita ticks concurrentes
@@ -30,6 +31,8 @@ export function useDeviceSync({ blueprint3d, currentUID, simulatingUidRef }: Syn
     if (!blueprint3d) return;
 
     const tick = async () => {
+      // Ya NO detenemos todo el tick, dejamos que la función corra.
+      
       if (tickRunningRef.current) return;
       tickRunningRef.current = true;
 
@@ -70,6 +73,11 @@ export function useDeviceSync({ blueprint3d, currentUID, simulatingUidRef }: Syn
               simulatingUidRef.current &&
               simulatingUidRef.current.toLowerCase() === uid
             ) continue;
+
+            // <-- EL FRENO SELECTIVO -->
+            // Si el objeto actual de la API es el mismo que tienes seleccionado en la interfaz,
+            // ignoramos sus coordenadas de la base de datos para no machacar tu edición local.
+            if (selectedItemUid && selectedItemUid === uid) continue;
 
             const item = itemByUid[uid];
             if (!item?.position) continue;
@@ -146,5 +154,5 @@ export function useDeviceSync({ blueprint3d, currentUID, simulatingUidRef }: Syn
 
     // Limpiar al desmontar o cambiar dependencias
     return () => clearInterval(intervalId);
-  }, [blueprint3d, currentUID]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [blueprint3d, currentUID, selectedItemUid]); // <-- Actualizamos las dependencias
 }
