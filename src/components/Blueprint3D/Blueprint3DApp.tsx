@@ -7,6 +7,7 @@ import AddTasks from './AddTasks';
 import TaskList from './TaskList';
 
 import { generateUID } from './utils';
+import { useDeviceSync } from '../../hooks/useDeviceSync';
 
 // Declare global window interface
 declare global {
@@ -93,6 +94,8 @@ interface Blueprint3DContextType {
   onSelectedWallChange?: (wall: any) => void;
   onSelectedFloorChange?: (floor: any) => void;
   onWaypointPick?: (callback: (x: number, z: number) => void) => (() => void);
+  /** Ref shared with TaskList so the sync hook can skip animating devices */
+  simulatingUidRef: React.MutableRefObject<string | null>;
 }
 
 // Create the context
@@ -146,6 +149,11 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentUID, setCurrentUID] = useState<string>('');
   const componentMounted = useRef(false);
+  /** Shared with TaskList — holds the uid of the device currently simulating */
+  const simulatingUidRef = useRef<string | null>(null);
+
+  // ── Bidirectional sync hook (500 ms polling) ─────────────────────────────
+  useDeviceSync({ blueprint3d, currentUID, simulatingUidRef });
 
   // Track when component mounts
   useEffect(() => {
@@ -568,6 +576,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
       onSelectedItemChange,
       onSelectedWallChange,
       onSelectedFloorChange,
+      simulatingUidRef,
       onWaypointPick: (cb) => {
         const viewerEl = document.getElementById('viewer');
         if (!viewerEl) return () => { };

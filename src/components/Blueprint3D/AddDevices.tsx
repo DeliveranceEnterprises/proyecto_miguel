@@ -197,6 +197,19 @@ const AddDevices: React.FC = () => {
     try {
       blueprint3d.model.scene.addItem(asset.type, asset.model, metadata);
       setOccupiedUids(prev => new Set([...prev, device.uid]));
+
+      // Initialize (or confirm) the device status entry so the sync hook can track it
+      DevicesService.updateDeviceStatus({
+        uid: device.uid,
+        requestBody: {
+          device_name: device.name,
+          status: 'Idle',
+          coordinates_x: 0,
+          coordinates_y: 0,
+          last_connection: new Date().toISOString(),
+        } as any,
+      }).catch(err => console.warn('[AddDevices] Could not init device status:', err));
+
       onStateChange('DESIGN');
     } catch (err) {
       console.error('[AddDevices] Failed to add device:', err);

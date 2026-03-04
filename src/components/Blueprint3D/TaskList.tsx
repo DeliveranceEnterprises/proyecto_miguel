@@ -83,7 +83,7 @@ function findDeviceItemInScene(items: any[], device: DevicePublic): any {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const TaskList: React.FC = () => {
-    const { blueprint3d, onStateChange, currentUID } = useBlueprint3D();
+    const { blueprint3d, onStateChange, currentUID, simulatingUidRef } = useBlueprint3D();
     const { getActiveOrganizationId } = useOrganizationContext();
 
     const [devices, setDevices] = useState<DevicePublic[]>([]);
@@ -214,6 +214,8 @@ const TaskList: React.FC = () => {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
         setSimulating(null);
+        // Signal sync hook that no device is simulating
+        if (simulatingUidRef) simulatingUidRef.current = null;
         clearPath();
         // Update device status to Idle
         if (deviceUid) {
@@ -242,6 +244,8 @@ const TaskList: React.FC = () => {
         let frameCount = 0;
         const deviceUid = device.uid;
         setSimulating(task.uid);
+        // Signal sync hook to skip this device during the simulation
+        if (simulatingUidRef) simulatingUidRef.current = deviceUid;
 
         // Mark device as Running in the API
         DevicesService.updateDeviceStatus({
