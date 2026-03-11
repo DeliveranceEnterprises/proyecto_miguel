@@ -5,9 +5,9 @@ import AddItems from './AddItems';
 import AddDevices from './AddDevices';
 import AddTasks from './AddTasks';
 import TaskList from './TaskList';
+import { useDeviceSync } from '../../hooks/useDeviceSync';
 
 import { generateUID } from './utils';
-import { useDeviceSync } from '../../hooks/useDeviceSync';
 
 // Declare global window interface
 declare global {
@@ -72,6 +72,7 @@ type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES' | 'TASKS' | 'TASK_LI
 interface Blueprint3DContextType {
   blueprint3d: Blueprint3DInstance | null;
   appState: AppState;
+  isRealMode: boolean;
   selectedItem: any;
   isLoading: boolean;
   selectedWall: any;
@@ -111,6 +112,7 @@ export interface Blueprint3DAppProps {
   onSelectedItemChange?: (item: any) => void;
   onSelectedWallChange?: (wall: any) => void;
   onSelectedFloorChange?: (floor: any) => void;
+  isRealMode?: boolean;
 }
 
 export interface Blueprint3DAppRef {
@@ -118,6 +120,8 @@ export interface Blueprint3DAppRef {
   createNewPlan: () => void;
   clearSelections: () => void;
   setControllerEnabled: (enabled: boolean) => void;
+  /** Returns the device_uid of every robot currently in the scene */
+  getSceneDeviceUids: () => string[];
 }
 
 // Hook to use the Blueprint3D context
@@ -139,6 +143,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   onSelectedItemChange,
   onSelectedWallChange,
   onSelectedFloorChange,
+  isRealMode = false,
 }, ref) => {
   const [appState, setAppState] = useState<AppState>('DESIGN');
   const [blueprint3d, setBlueprint3d] = useState<Blueprint3DInstance | null>(null);
@@ -155,12 +160,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   const activeItemUid = selectedItem?.metadata?.device_uid || selectedItem?.metadata?.deviceId || null;
 
   // ── Bidirectional sync hook (500 ms polling) ─────────────────────────────
-  useDeviceSync({ 
-    blueprint3d, 
-    currentUID, 
-    simulatingUidRef,
-    selectedItemUid: activeItemUid ? String(activeItemUid).toLowerCase() : null
-  });
+  useDeviceSync(blueprint3d, simulatingUidRef);
 
   // Track when component mounts
   useEffect(() => {
@@ -550,6 +550,13 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
         }
       }
     },
+    getSceneDeviceUids: (): string[] => {
+      const scene: any = blueprint3d?.model?.scene;
+      const items: any[] = scene?.getItems?.() ?? [];
+      return items
+        .filter((item: any) => !!item.device_uid)
+        .map((item: any) => item.device_uid as string);
+    },
   }));
 
   // ─── Styles for the TASKS split layout ───────────────────────────────────────
@@ -562,6 +569,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     <Blueprint3DContext.Provider value={{
       blueprint3d,
       appState,
+      isRealMode,
       selectedItem,
       isLoading,
       selectedWall,

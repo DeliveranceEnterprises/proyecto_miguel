@@ -387,9 +387,9 @@ var BP3D;
             };
             /** Configuration data loaded from/stored to extern. */
             Configuration.data = {
-                dimUnit: Core.dimInch,
-                wallHeight: 250,
-                wallThickness: 10
+                dimUnit: Core.dimMeter,
+                wallHeight: 300,
+                wallThickness: 5
             };
             return Configuration;
         })();
@@ -2499,7 +2499,7 @@ var BP3D;
              * @param scale The initial scaling.
              * @param fixed True if fixed.
              */
-            Scene.prototype.addItem = function (itemType, fileName, metadata, position, rotation, scale, fixed) {
+            Scene.prototype.addItem = function (itemType, fileName, metadata, position, rotation, scale, fixed, device_uid) {
                 itemType = itemType || 1;
                 var scope = this;
 
@@ -2531,8 +2531,32 @@ var BP3D;
                         var rawSize = new THREE.Vector3();
                         rawSize.subVectors(rawBox.max, rawBox.min);
 
-                        // If model is tiny (<5 units), it's probably in metres → scale ×100
-                        var autoScale = (rawSize.length() < 5) ? 100 : 1;
+                        var autoScale = 1;
+                        var targetHeight = 0;
+
+                        if (metadata && metadata.defaultHeight && metadata.defaultHeight > 0) {
+                            targetHeight = metadata.defaultHeight;
+                        } else {
+                            // Fallback based on filename in case custom metadata was stripped by backend
+                            var p = fileName.toLowerCase();
+                            if (p.indexOf('viggo_sc50') !== -1) targetHeight = 200;
+                            else if (p.indexOf('allybot') !== -1) targetHeight = 137;
+                            else if (p.indexOf('pandabot') !== -1) targetHeight = 150;
+                            else if (p.indexOf('pudu_bellabot') !== -1) targetHeight = 100;
+                            else if (p.indexOf('pudu_ketty') !== -1) targetHeight = 80;
+                            else if (p.indexOf('eniscope') !== -1) targetHeight = 200;
+                        }
+
+                        if (targetHeight > 0) {
+                            // If we have a target height in cm, scale the Y-axis to match exactly
+                            if (rawSize.y > 0) {
+                                autoScale = targetHeight / rawSize.y;
+                            }
+                        } else {
+                            // If model is tiny (<5 units), it's probably in metres → scale ×100
+                            autoScale = (rawSize.length() < 5) ? 100 : 1;
+                        }
+
                         model.scale.set(autoScale, autoScale, autoScale);
 
                         // Re-compute after scaling
@@ -2560,11 +2584,16 @@ var BP3D;
                         var ItemClass = BP3D.Items.Factory.getClass(itemType);
                         var item = new ItemClass(scope.model, metadata, geometry, material, position, rotation, scale);
                         item.fixed = fixed || false;
+                        item.device_uid = device_uid || null;
                         item.add(model);
 
                         scope.items.push(item);
                         scope.add(item);
                         item.initObject();
+                        if (metadata && metadata.elevation !== undefined && metadata.elevation !== 0) {
+                            item.position.y = metadata.elevation;
+                            item.position_set = true;
+                        }
                         scope.itemLoadedCallbacks.fire(item);
                     }, undefined, function (error) {
                         console.error("Error cargando GLB:", error);
@@ -2576,9 +2605,14 @@ var BP3D;
                     var loaderCallback = function (geometry, materials) {
                         var item = new (BP3D.Items.Factory.getClass(itemType))(scope.model, metadata, geometry, new THREE.MeshFaceMaterial(materials), position, rotation, scale);
                         item.fixed = fixed || false;
+                        item.device_uid = device_uid || null;
                         scope.items.push(item);
                         scope.add(item);
                         item.initObject();
+                        if (metadata && metadata.elevation !== undefined && metadata.elevation !== 0) {
+                            item.position.y = metadata.elevation;
+                            item.position_set = true;
+                        }
                         scope.itemLoadedCallbacks.fire(item);
                     };
                     this.itemLoadingCallbacks.fire();
@@ -2641,7 +2675,18 @@ var BP3D;
                         scale_x: object.scale.x,
                         scale_y: object.scale.y,
                         scale_z: object.scale.z,
-                        fixed: object.fixed
+                        fixed: object.fixed,
+                        device_uid: object.device_uid || null,  // <-- añadir esto
+                        // Preserve necessary metadata
+                        format: object.metadata.format,
+                        elevation: object.metadata.elevation,
+                        defaultHeight: object.metadata.defaultHeight,
+                        deviceId: object.metadata.deviceId,
+                        deviceCategory: object.metadata.deviceCategory,
+                        deviceModel: object.metadata.deviceModel,
+                        deviceImage: object.metadata.deviceImage,
+                        deviceMapKey: object.metadata.deviceMapKey,
+                        deviceEnabled: object.metadata.deviceEnabled
                     };
                 }
                 var room = {
@@ -2660,10 +2705,28 @@ var BP3D;
                         itemName: item.item_name,
                         resizable: item.resizable,
                         itemType: item.item_type,
-                        modelUrl: item.model_url
+                        modelUrl: item.model_url,
+                        format: item.format,
+                        elevation: item.elevation,
+                        defaultHeight: item.defaultHeight,
+                        deviceId: item.deviceId,
+                        deviceCategory: item.deviceCategory,
+                        deviceModel: item.deviceModel,
+                        deviceImage: item.deviceImage,
+                        deviceMapKey: item.deviceMapKey,
+                        deviceEnabled: item.deviceEnabled
                     };
                     var scale = new THREE.Vector3(item.scale_x, item.scale_y, item.scale_z);
-                    _this.scene.addItem(item.item_type, item.model_url, metadata, position, item.rotation, scale, item.fixed);
+                    _this.scene.addItem(
+                        item.item_type,
+                        item.model_url,
+                        metadata,
+                        position,
+                        item.rotation,
+                        scale,
+                        item.fixed,
+                        item.device_uid || null  // <-- añadir esto
+                    );
                 });
             };
             return Model;

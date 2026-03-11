@@ -1,18 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { FiSave, FiCodepen, FiPlus, FiEdit, FiX, FiClipboard, FiList } from 'react-icons/fi';
+import React, { useState, useEffect, useRef } from 'react';
+import { FiSave, FiCodepen, FiPlus, FiEdit, FiX, FiClipboard, FiList, FiMap } from 'react-icons/fi';
 
 import { useBlueprint3D } from './Blueprint3DApp';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
-import { ScenesService } from '../../client';
+import { ScenesService, OrganizationsService } from '../../client';
 import type { SceneCreate, SceneUpdate } from '../../client/types.gen';
 import useCustomToast from '../../hooks/useCustomToast';
 import { passwordRules } from '../../utils';
 
 const Viewer: React.FC = () => {
-  const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange, appState } = useBlueprint3D();
+  const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange, appState, isRealMode } = useBlueprint3D();
   const { getActiveOrganizationId } = useOrganizationContext();
   const showToast = useCustomToast();
   const [isEditingMode, setIsEditingMode] = useState(false);
+
+  // Scene picker dropdown state
+  const [showScenePicker, setShowScenePicker] = useState(false);
+  const [simScenes, setSimScenes] = useState<any[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const scenePickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker when clicking outside
+  useEffect(() => {
+    if (!showScenePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (scenePickerRef.current && !scenePickerRef.current.contains(e.target as Node)) {
+        setShowScenePicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showScenePicker]);
 
   // Helper function to check if a scene exists
   const checkSceneExists = async (sceneId: string): Promise<boolean> => {
@@ -191,13 +209,97 @@ const Viewer: React.FC = () => {
 
   const handleEnterEditMode = () => {
     setIsEditingMode(true);
-    onStateChange('DESIGN');  // ← añadir esta línea
+    onStateChange('DESIGN');
     if (onEditingModeChange) {
       onEditingModeChange(true);
     }
   };
 
-  // Opción 1: Función flecha (la más común en React)
+  /** Open the scene picker and load the list of simulation scenes */
+  const handleOpenScenePicker = async () => {
+    if (showScenePicker) {
+      setShowScenePicker(false);
+      return;
+    }
+    const orgId = getActiveOrganizationId();
+    if (!orgId) return;
+    try {
+      const scenesData = await OrganizationsService.readOrganizationScenes({ id: orgId });
+      const allScenes = scenesData?.data || [];
+      // Only show scenes that are not Real Mode Scene or Imported Scene
+      const filtered = allScenes.filter(
+        (s: any) => s.label !== 'Real Mode Scene' && s.label !== 'Imported Scene'
+      );
+      setSimScenes(filtered);
+    } catch (e) {
+      console.error('Failed to fetch scenes for picker', e);
+    }
+    setShowScenePicker(true);
+  };
+
+  /** Load the base Real Mode Scene */
+  const handleLoadBaseScene = async () => {
+    setShowScenePicker(false);
+    const orgId = getActiveOrganizationId();
+    if (!orgId) return;
+    try {
+      const scenesData = await OrganizationsService.readOrganizationScenes({ id: orgId });
+      const allScenes = scenesData?.data || [];
+      const base = allScenes.find((s: any) => s.label === 'Real Mode Scene');
+      if (!base) {
+        showToast('Not Found', 'Real Mode Scene not found.', 'error');
+        return;
+      }
+      const sceneData = await ScenesService.readScene({ sceneId: base.uid });
+      if (blueprint3d?.model) {
+        blueprint3d.model.loadSerialized(JSON.stringify({
+          uid: sceneData.uid,
+          floorplan: sceneData.floorplan,
+          items: sceneData.items || []
+        }));
+        onUIDChange(sceneData.uid);
+        showToast('Base Scene Loaded', 'The Real Mode Scene has been restored.', 'success');
+      }
+    } catch (e) {
+      console.error('Failed to load base scene', e);
+      showToast('Error', 'Could not load the base scene.', 'error');
+    }
+  };
+
+  /** Import a simulation scene: copy layout + non-robot items, delete old import, create new */
+  const handleImportScene = async (simScene: any) => {
+    setShowScenePicker(false);
+    setIsImporting(true);
+    try {
+      // 1. Fetch full data of the selected simulation scene
+      const srcScene = await ScenesService.readScene({ sceneId: simScene.uid });
+
+      // 2. Filter out robot items (those with a device_uid)
+      const filteredItems = (srcScene.items || []).filter(
+        (item: any) => !item.device_uid
+      );
+
+      // 3. Load directly into the viewer in-memory, keeping the current UID
+      //    (Real Mode Scene's UID) — nothing is created or saved in the backend.
+      if (blueprint3d?.model) {
+        blueprint3d.model.loadSerialized(JSON.stringify({
+          uid: currentUID,           // keep Real Mode Scene UID
+          floorplan: srcScene.floorplan,
+          items: filteredItems,
+        }));
+        showToast(
+          'Scene Imported',
+          `"${simScene.label || simScene.uid.substring(0, 8)}" loaded without robots.`,
+          'success'
+        );
+      }
+    } catch (e) {
+      console.error('Failed to import scene', e);
+      showToast('Import Failed', 'Could not import the scene. Check console for details.', 'error');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
 
   const handleCancelEditing = async () => {
@@ -338,35 +440,148 @@ const Viewer: React.FC = () => {
             <FiEdit style={{ marginRight: '6px' }} /> Edit Scene
           </button>
 
-          <button
-            onClick={(e) => { e.preventDefault(); onStateChange('TASK_LIST' as any); }}
-            style={{
-              backgroundColor: '#6B46C1',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 16px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#553C9A';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#6B46C1';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            }}
-          >
-            <FiList style={{ marginRight: '6px' }} /> View Tasks
-          </button>
+          {/* ── Scene Picker — only in Real Mode ───────────────────────────── */}
+          {isRealMode && (
+            <div ref={scenePickerRef} style={{ position: 'relative', display: 'inline-block' }}>
+              <button
+                onClick={handleOpenScenePicker}
+                disabled={isImporting}
+                style={{
+                  backgroundColor: '#2C7A7B',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: isImporting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                  opacity: isImporting ? 0.7 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isImporting) {
+                    e.currentTarget.style.backgroundColor = '#285E61';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#2C7A7B';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                }}
+              >
+                <FiMap style={{ marginRight: '6px' }} />
+                {isImporting ? 'Importing...' : 'Choose Scene'}
+              </button>
+
+              {showScenePicker && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    minWidth: '240px',
+                    backgroundColor: 'white',
+                    borderRadius: '8px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                    border: '1px solid #E2E8F0',
+                    zIndex: 9999,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* Option 1 – Base Scene */}
+                  <div
+                    onClick={handleLoadBaseScene}
+                    style={{
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: '#2D3748',
+                      borderBottom: '1px solid #EDF2F7',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#EBF8FF')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    🏠 Base Scene
+                  </div>
+
+                  {/* Divider label */}
+                  <div style={{ padding: '6px 16px 4px', fontSize: '11px', color: '#A0AEC0', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+                    Import from Simulation
+                  </div>
+
+                  {/* Option 2 – Simulation scenes list */}
+                  {simScenes.length === 0 ? (
+                    <div style={{ padding: '8px 16px', fontSize: '13px', color: '#718096' }}>
+                      No simulation scenes found
+                    </div>
+                  ) : (
+                    simScenes.map((scene) => (
+                      <div
+                        key={scene.uid}
+                        onClick={() => handleImportScene(scene)}
+                        style={{
+                          padding: '10px 16px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '14px',
+                          color: '#2D3748',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F0FFF4')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        📋 {scene.label || scene.uid.substring(0, 8)}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isRealMode && (
+            <button
+              onClick={(e) => { e.preventDefault(); onStateChange('TASK_LIST' as any); }}
+              style={{
+                backgroundColor: '#6B46C1',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#553C9A';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#6B46C1';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <FiList style={{ marginRight: '6px' }} /> View Tasks
+            </button>
+          )}
         </div>
 
         {/* EDIT MODE buttons: always in DOM, toggled with display not conditional render */}
@@ -491,35 +706,37 @@ const Viewer: React.FC = () => {
             <FiPlus style={{ marginRight: '6px' }} /> Add Devices
           </button>
 
-          <button
-            onClick={(e) => { e.preventDefault(); onStateChange('TASKS'); }}
-            style={{
-              backgroundColor: '#DD6B20',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 16px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#C05621';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#DD6B20';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            }}
-          >
-            <FiClipboard style={{ marginRight: '6px' }} /> Add Tasks
-          </button>
+          {!isRealMode && (
+            <button
+              onClick={(e) => { e.preventDefault(); onStateChange('TASKS'); }}
+              style={{
+                backgroundColor: '#DD6B20',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#C05621';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#DD6B20';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              <FiClipboard style={{ marginRight: '6px' }} /> Add Tasks
+            </button>
+          )}
 
           <button
             onClick={handleCancelEditing}

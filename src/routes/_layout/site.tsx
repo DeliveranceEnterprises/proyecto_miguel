@@ -25,10 +25,11 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import Blueprint3DApp, { Blueprint3DAppRef } from "../../components/Blueprint3D/Blueprint3DApp";
 import ScenesList from "../../components/Blueprint3D/ScenesList";
+import RobotInfoPanel from "../../components/Blueprint3D/RobotInfoPanel";
 import "../../components/Blueprint3D/Blueprint3DApp.css";
 import { useOrganizationContext } from "../../hooks/useOrganizationContext";
 import { createDefaultFloorplan } from "../../components/Blueprint3D/utils";
-import { ScenesService } from "../../client";
+import { OrganizationsService, ScenesService } from "../../client";
 import useCustomToast from "../../hooks/useCustomToast";
 import { useState, useRef, useEffect } from "react";
 import { FiTrash2, FiX } from "react-icons/fi";
@@ -50,11 +51,14 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
 
   useEffect(() => {
     if (selectedItem) {
-      const cmToIn = (cm: number) => cm / 2.54;
+      // Convertir de cm (Blueprint3D) a metros
+      const cmToM = (cm: number) => cm / 100;
+
+      // Mantenemos 2 decimales para precisión en metros
       const dims = {
-        width: Math.round(cmToIn(selectedItem.getWidth())),
-        height: Math.round(cmToIn(selectedItem.getHeight())),
-        depth: Math.round(cmToIn(selectedItem.getDepth())),
+        width: Number(cmToM(selectedItem.getWidth()).toFixed(2)),
+        height: Number(cmToM(selectedItem.getHeight()).toFixed(2)),
+        depth: Number(cmToM(selectedItem.getDepth()).toFixed(2)),
       };
       setItemDimensions(dims);
       baseDimensionsRef.current = { ...dims }; // <-- guardamos la base
@@ -80,9 +84,9 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
 
     // Detectar qué dimensión cambió más (en ratio) respecto a la base
     const ratios = {
-      width:  base.width  > 0 ? current.width  / base.width  : 1,
+      width: base.width > 0 ? current.width / base.width : 1,
       height: base.height > 0 ? current.height / base.height : 1,
-      depth:  base.depth  > 0 ? current.depth  / base.depth  : 1,
+      depth: base.depth > 0 ? current.depth / base.depth : 1,
     };
 
     // La dimensión con mayor cambio relativo es la "driver"
@@ -92,18 +96,19 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
 
     const ratio = ratios[changedDim];
 
-    // Calcular nuevas dimensiones proporcionales
+    // Calcular nuevas dimensiones proporcionales (manteniendo 2 decimales)
     const newDims = {
-      width:  Math.round(base.width  * ratio),
-      height: Math.round(base.height * ratio),
-      depth:  Math.round(base.depth  * ratio),
+      width: Number((base.width * ratio).toFixed(2)),
+      height: Number((base.height * ratio).toFixed(2)),
+      depth: Number((base.depth * ratio).toFixed(2)),
     };
 
-    const inToCm = (inches: number) => inches * 2.54;
+    // Convertir de metros a cm para Blueprint3D
+    const mToCm = (m: number) => m * 100;
     selectedItem.resize(
-      inToCm(newDims.height),
-      inToCm(newDims.width),
-      inToCm(newDims.depth),
+      mToCm(newDims.height),
+      mToCm(newDims.width),
+      mToCm(newDims.depth),
     );
 
     setItemDimensions(newDims);
@@ -152,7 +157,7 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
 
           <VStack spacing={3} align="stretch">
             <Text fontSize="sm" fontWeight="medium" color="gray.500">
-              Dimensions (inches)
+              Dimensions (meters)
             </Text>
 
             {(['width', 'height', 'depth'] as const).map((dim) => (
@@ -162,7 +167,9 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
                   size="sm"
                   value={itemDimensions[dim]}
                   onChange={(_, value) => handleDimensionChange(dim, value || 0)}
-                  min={1}
+                  min={0.01}
+                  step={0.1} // Permite cambiar de 10cm en 10cm al dar a las flechas
+                  precision={2} // Fuerzo a que se muestren 2 decimales
                 >
                   <NumberInputField />
                   <NumberInputStepper>
@@ -238,7 +245,7 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
         img.onload = () => console.log(`✅ Preloaded: ${texture.url}`);
         img.onerror = (e) => console.error(`❌ Failed to preload: ${texture.url}`, e);
         img.src = texture.url;
-        
+
         const thumbImg = new Image();
         thumbImg.onload = () => console.log(`✅ Preloaded thumbnail: ${texture.thumbnail}`);
         thumbImg.onerror = (e) => console.error(`❌ Failed to preload thumbnail: ${texture.thumbnail}`, e);
@@ -252,7 +259,7 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
 
   const handleTextureChange = (textureUrl: string, stretch: boolean, scale: number) => {
     console.log(`🎨 Applying texture: ${textureUrl}`, { stretch, scale });
-    
+
     try {
       if (selectedWall) {
         console.log('🧱 Applying to wall:', selectedWall);
@@ -264,10 +271,10 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
         console.error('❌ No wall or floor selected!');
         return;
       }
-      
+
       // Close menu immediately after texture application
       onClose();
-      
+
     } catch (error) {
       console.error('❌ Texture application failed:', error);
     }
@@ -321,7 +328,7 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
             <Text fontSize="sm" fontWeight="medium" color="gray.500">
               Select a texture:
             </Text>
-            
+
             <Box maxHeight="300px" overflowY="auto">
               <VStack spacing={2}>
                 {textures.map((texture, index) => (
@@ -365,51 +372,57 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
 function Site() {
   const bgColor = useColorModeValue("ui.light", "ui.dark");
   const cardBg = useColorModeValue("white", "gray.800");
-  
+
   // Get the active organization context
   const { activeOrganizationContext } = useOrganizationContext();
-  
+
   // State for selected scene
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
-  
+
+  // Ref to remember the previous simulation scene to restore it when turning off Real Mode
+  const prevSimulationSceneRef = useRef<string | null>(null);
+
+  // State for Real Mode vs Simulation Mode
+  const [isRealMode, setIsRealMode] = useState<boolean>(false);
+
   // State to track if a scene has been loaded
   const [hasLoadedScene, setHasLoadedScene] = useState<boolean>(false);
-  
+
   // State to track if user is in editing mode
   const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
-  
+
   // State to track selected item for editing
   const [selectedItem, setSelectedItem] = useState<any>(null);
-  
+
   // State to track selected wall/floor for texture editing
   const [selectedWall, setSelectedWall] = useState<any>(null);
   const [selectedFloor, setSelectedFloor] = useState<any>(null);
-  
+
   // Toast for notifications
   const showToast = useCustomToast();
-  
+
   // Ref to access Blueprint3D functions
   const blueprint3DRef = useRef<Blueprint3DAppRef>(null);
-  
+
   // Ref to access ScenesList functions for refreshing
   const scenesListRef = useRef<any>(null);
-  
+
   // Track the previous organization UID to detect actual changes
   const prevOrgUidRef = useRef<string | undefined>(activeOrganizationContext?.uid);
-  
+
   // Effect to handle organization context changes
   useEffect(() => {
     const currentOrgUid = activeOrganizationContext?.uid;
     const prevOrgUid = prevOrgUidRef.current;
-    
+
     // Only reset if the organization actually changed (not on initial load)
     if (prevOrgUid !== undefined && currentOrgUid !== prevOrgUid) {
       console.log('Organization context changed, resetting viewer');
-      
+
       // Reset the viewer when organization context changes
       setHasLoadedScene(false);
       setSelectedScene(null);
-      
+
       // Show notification about the reset
       showToast(
         'Context Changed',
@@ -417,11 +430,71 @@ function Site() {
         'success'
       );
     }
-    
+
     // Update the ref for next comparison
     prevOrgUidRef.current = currentOrgUid;
   }, [activeOrganizationContext?.uid, showToast]); // Only depend on organization UID and showToast
-  
+
+  // Effect to handle Real Mode Scene logic
+  useEffect(() => {
+    const orgId = activeOrganizationContext?.uid;
+    if (!orgId) return;
+
+    if (isRealMode) {
+      // We are switching TO Real Mode.
+      // 1. Save the currently selected simulation scene so we can restore it later
+      prevSimulationSceneRef.current = selectedScene;
+
+      const setupRealModeScene = async () => {
+        try {
+          const scenesData = await OrganizationsService.readOrganizationScenes({ id: orgId });
+          const scenes = scenesData?.data || [];
+
+          const realModeScene = scenes.find(s => s.label === "Real Mode Scene");
+
+          if (realModeScene) {
+            handleSceneSelection(realModeScene.uid);
+          } else {
+            // Need to create it
+            const newScene = await ScenesService.createScene({
+              requestBody: {
+                label: "Real Mode Scene",
+                organization_id: orgId,
+                // Empty default floorplan 
+                floorplan: {
+                  corners: {},
+                  walls: []
+                },
+                items: [],
+              }
+            });
+
+            if (newScene && newScene.uid) {
+              handleSceneSelection(newScene.uid);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to setup Real Mode Scene:", error);
+          showToast("Error", "Could not initialize the Real Mode Scene.", "error");
+        }
+      };
+
+      setupRealModeScene();
+    } else {
+      // We are switching TO Simulation Mode (from Real Mode).
+      // Restore previous scene
+      const sceneToRestore = prevSimulationSceneRef.current;
+      if (sceneToRestore) {
+        handleSceneSelection(sceneToRestore);
+      } else {
+        // Just clear selection if there was none
+        setSelectedScene(null);
+        setHasLoadedScene(false);
+      }
+    }
+  }, [isRealMode]); // intentionally omit other dependencies to ONLY trigger on toggle
+
+
   // Handle creating a new plan
   const handleCreateNewPlan = () => {
     // Prevent creating new plans while in editing mode
@@ -433,10 +506,10 @@ function Site() {
       );
       return;
     }
-    
+
     const defaultPlan = createDefaultFloorplan();
     console.log('Creating new plan:', defaultPlan);
-    
+
     // Load the plan into the Blueprint3D viewer
     if (blueprint3DRef.current) {
       blueprint3DRef.current.loadPlan(defaultPlan);
@@ -446,7 +519,7 @@ function Site() {
       console.warn('Blueprint3D ref not available, plan not loaded');
     }
   };
-  
+
   // Handle scene selection and loading
   const handleSceneSelection = async (sceneId: string) => {
     // Prevent scene changes while in editing mode
@@ -458,30 +531,30 @@ function Site() {
       );
       return;
     }
-    
+
     setSelectedScene(sceneId);
     console.log("Selected scene:", sceneId);
-    
+
     try {
       // Fetch the scene data from the API
       console.log('Fetching scene data for:', sceneId);
       const sceneData = await ScenesService.readScene({ sceneId });
-      
+
       console.log('Scene data received:', sceneData);
-      
+
       // Transform the scene data to the format expected by Blueprint3D
       const blueprintData = {
         uid: sceneData.uid,
         floorplan: sceneData.floorplan,
         items: sceneData.items || []
       };
-      
+
       // Load the scene into the Blueprint3D viewer
       if (blueprint3DRef.current) {
         blueprint3DRef.current.loadPlan(blueprintData);
         setHasLoadedScene(true);
         console.log('Scene loaded into viewer:', sceneId);
-        
+
         showToast(
           'Scene Loaded',
           `Scene ${sceneId.substring(0, 8)}... has been loaded successfully`,
@@ -508,7 +581,7 @@ function Site() {
   // Handle when a scene is saved
   const handleSceneSaved = (sceneId: string) => {
     console.log('Scene saved, refreshing scenes list:', sceneId);
-    
+
     // Refresh the scenes list if the ref is available
     if (scenesListRef.current && scenesListRef.current.refreshScenes) {
       scenesListRef.current.refreshScenes();
@@ -518,18 +591,18 @@ function Site() {
   // Handle editing mode changes
   const handleEditingModeChange = (editingMode: boolean) => {
     setIsEditingMode(editingMode);
-    
+
     // Control Blueprint3D controller enabled state based on editing mode
     if (blueprint3DRef.current) {
       blueprint3DRef.current.setControllerEnabled(editingMode);
     }
-    
+
     // Clear selections when exiting editing mode
     if (!editingMode) {
       setSelectedItem(null);
       setSelectedWall(null);
       setSelectedFloor(null);
-      
+
       // Also clear Blueprint3D selections
       if (blueprint3DRef.current) {
         blueprint3DRef.current.clearSelections();
@@ -558,7 +631,7 @@ function Site() {
     // Clear the local state to hide the dialog
     setSelectedWall(null);
     setSelectedFloor(null);
-    
+
     // Also clear Blueprint3D selections
     if (blueprint3DRef.current) {
       console.log('🔧 Calling clearSelections on Blueprint3D ref');
@@ -571,10 +644,93 @@ function Site() {
   return (
     <Container maxW="full" bg={bgColor} minH="100vh">
       <Box pt={12} px={4} height="100vh" overflowY="auto">
-        <Heading size="lg" textAlign={{ base: "center", md: "left" }} mb={8}>
-          Site Management
-        </Heading>
-        
+        <Flex justify="space-between" align="center" mb={8} wrap="wrap" gap={4}>
+          <Heading size="lg" textAlign={{ base: "center", md: "left" }}>
+            Site Management
+          </Heading>
+
+          {/* Enhanced Mode Toggle */}
+          <Box
+            display="flex"
+            alignItems="center"
+            bg={isRealMode ? "blue.950" : "gray.100"}
+            borderRadius="full"
+            p="3px"
+            transition="all 0.3s ease"
+            border="1px solid"
+            borderColor={isRealMode ? "blue.400" : "gray.300"}
+            boxShadow={isRealMode ? "0 0 12px rgba(66,153,225,0.3)" : "inset 0 1px 3px rgba(0,0,0,0.1)"}
+            cursor="pointer"
+            onClick={() => setIsRealMode(!isRealMode)}
+            userSelect="none"
+          >
+            {/* Simulation Label */}
+            <Box
+              px={3}
+              py={1}
+              borderRadius="full"
+              bg={!isRealMode ? "white" : "transparent"}
+              boxShadow={!isRealMode ? "0 1px 4px rgba(0,0,0,0.15)" : "none"}
+              transition="all 0.3s ease"
+              display="flex"
+              alignItems="center"
+              gap={1.5}
+            >
+              <Box
+                w="6px"
+                h="6px"
+                borderRadius="full"
+                bg={!isRealMode ? "gray.500" : "gray.400"}
+                opacity={!isRealMode ? 1 : 0.4}
+                transition="all 0.3s ease"
+              />
+              <Text
+                fontSize="xs"
+                fontWeight="600"
+                letterSpacing="0.05em"
+                textTransform="uppercase"
+                color={!isRealMode ? "gray.700" : "gray.400"}
+                transition="all 0.3s ease"
+              >
+                Simulation
+              </Text>
+            </Box>
+
+            {/* Real Mode Label */}
+            <Box
+              px={3}
+              py={1}
+              borderRadius="full"
+              bg={isRealMode ? "blue.500" : "transparent"}
+              boxShadow={isRealMode ? "0 1px 8px rgba(66,153,225,0.5)" : "none"}
+              transition="all 0.3s ease"
+              display="flex"
+              alignItems="center"
+              gap={1.5}
+            >
+              <Box
+                w="6px"
+                h="6px"
+                borderRadius="full"
+                bg={isRealMode ? "white" : "gray.500"}
+                opacity={isRealMode ? 1 : 0.4}
+                transition="all 0.3s ease"
+                boxShadow={isRealMode ? "0 0 6px white" : "none"}
+              />
+              <Text
+                fontSize="xs"
+                fontWeight="600"
+                letterSpacing="0.05em"
+                textTransform="uppercase"
+                color={isRealMode ? "white" : "gray.500"}
+                transition="all 0.3s ease"
+              >
+                Real Mode
+              </Text>
+            </Box>
+          </Box>
+        </Flex>
+
         {/* Organization Context Header */}
         {activeOrganizationContext && (
           <Box
@@ -605,7 +761,7 @@ function Site() {
             </Text>
           </Box>
         )}
-        
+
         <Box
           bg={cardBg}
           borderRadius="lg"
@@ -615,53 +771,54 @@ function Site() {
         >
           <Flex gap="20px" direction={{ base: "column", md: "row" }} height="100%">
             {/* Left: Scenes List */}
-            <Box flexBasis={{ base: "100%", md: "20%" }} height="100%">
-              <ScenesList
-                ref={scenesListRef}
-                title="Scenes List"
-                selectedId={selectedScene}
-                setSelectedId={handleSceneSelection}
-                onCreateNewPlan={handleCreateNewPlan}
-              />
-            </Box>
+            {!isRealMode && (
+              <Box flexBasis={{ base: "100%", md: "20%" }} height="100%">
+                <ScenesList
+                  ref={scenesListRef}
+                  title="Scenes List"
+                  selectedId={selectedScene}
+                  setSelectedId={handleSceneSelection}
+                  onCreateNewPlan={handleCreateNewPlan}
+                />
+              </Box>
+            )}
 
             {/* Right: Blueprint3D Application */}
-            <Box flexBasis={{ base: "100%", md: "80%" }} height="100%">
+            <Box flexBasis={{ base: "100%", md: isRealMode ? "100%" : "80%" }} height="100%">
               <Card
                 height="100%"
                 width="100%"
                 variant="outline"
                 borderColor={useColorModeValue("gray.200", "gray.600")}
               >
-                <CardBody 
-                  height="100%" 
+                <CardBody
+                  height="100%"
                   p={0}
                   overflow="hidden"
                   position="relative"
                 >
-                  {/* Always render Blueprint3D Application for ref availability */}
-                  <Blueprint3DApp 
+                  <Blueprint3DApp
                     ref={blueprint3DRef}
+                    isRealMode={isRealMode}
                     onSceneSaved={handleSceneSaved}
                     onEditingModeChange={handleEditingModeChange}
                     onSelectedItemChange={handleSelectedItemChange}
                     onSelectedWallChange={handleSelectedWallChange}
                     onSelectedFloorChange={handleSelectedFloorChange}
                   />
-                  
-                  {/* Show overlay message when no scene is loaded */}
+
                   {!hasLoadedScene && (
-                    <Center 
-                      position="absolute" 
-                      top={0} 
-                      left={0} 
-                      right={0} 
-                      bottom={0} 
+                    <Center
+                      position="absolute"
+                      top={0}
+                      left={0}
+                      right={0}
+                      bottom={0}
                       bg={useColorModeValue("white", "gray.800")}
                       zIndex={10}
                     >
-                      <Text 
-                        fontSize="lg" 
+                      <Text
+                        fontSize="lg"
                         color={useColorModeValue("gray.500", "gray.400")}
                         textAlign="center"
                       >
@@ -669,11 +826,10 @@ function Site() {
                       </Text>
                     </Center>
                   )}
-                  
-                  {/* Item Editing Panel - appears when an item is selected AND in editing mode */}
+
                   {selectedItem && isEditingMode && (
-                    <ItemEditingPanel 
-                      selectedItem={selectedItem} 
+                    <ItemEditingPanel
+                      selectedItem={selectedItem}
                       onClose={() => {
                         if (blueprint3DRef.current) {
                           blueprint3DRef.current.clearSelections();
@@ -681,15 +837,20 @@ function Site() {
                       }}
                     />
                   )}
-                  
-                  {/* Wall/Floor Editing Panel - appears when a wall or floor is selected AND in editing mode */}
+
                   {isEditingMode && (
-                    <WallFloorEditingPanel 
-                      selectedWall={selectedWall} 
-                      selectedFloor={selectedFloor} 
+                    <WallFloorEditingPanel
+                      selectedWall={selectedWall}
+                      selectedFloor={selectedFloor}
                       onClose={handleCloseTexturePanel}
                     />
                   )}
+
+                  {/* Robot Info Panel — only in Real Mode */}
+                  <RobotInfoPanel
+                    blueprint3DRef={blueprint3DRef}
+                    isVisible={isRealMode}
+                  />
                 </CardBody>
               </Card>
             </Box>

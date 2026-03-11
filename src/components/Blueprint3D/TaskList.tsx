@@ -23,9 +23,7 @@ function fmtDate(iso: string): string {
     try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
-function normalise(s: string): string {
-    return s.toLowerCase().trim().replace(/[\s\-.]+/g, '_');
-}
+
 
 /** Multi-strategy lookup — same logic as AddTasks.tsx findDeviceItemInScene */
 function findDeviceItemInScene(items: any[], device: DevicePublic): any {
@@ -105,7 +103,7 @@ const TaskList: React.FC = () => {
         try {
             if (!orgId) { setError('No active organisation selected.'); return; }
             const devRes = await DevicesService.getDevicesOwn({ ownerId: orgId });
-            const devList = devRes.data;
+            const devList = devRes.data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             setDevices(devList);
 
             // Fetch tasks for every device in parallel
@@ -113,16 +111,19 @@ const TaskList: React.FC = () => {
             await Promise.all(devList.map(async (d) => {
                 try {
                     const res = await DevicesService.getDeviceTasks({ uid: d.uid });
-                    taskMap[d.uid] = res.data ?? [];
+                    const tasks = res.data ?? [];
+                    taskMap[d.uid] = tasks.sort((a, b) => {
+                        const dateA = new Date(a.start_time || 0).getTime();
+                        const dateB = new Date(b.start_time || 0).getTime();
+                        return dateB - dateA;
+                    });
                 } catch {
                     taskMap[d.uid] = [];
                 }
             }));
             setTasksByDevice(taskMap);
-            // Auto-expand devices that have tasks
-            const auto: Record<string, boolean> = {};
-            devList.forEach(d => { if ((taskMap[d.uid] ?? []).length > 0) auto[d.uid] = true; });
-            setExpanded(auto);
+            // Default to collapsed state for all devices tasks
+            setExpanded({});
         } catch (err: any) {
             setError('Could not load tasks: ' + (err?.message ?? String(err)));
         } finally {
@@ -420,7 +421,7 @@ const TaskList: React.FC = () => {
 
                                                     {/* Run / Stop button */}
                                                     {isRunning ? (
-                                                        <button onClick={stopSim}
+                                                        <button onClick={() => stopSim(device.uid)}
                                                             style={{ ...btn('#EF4444'), padding: '5px 8px', fontSize: '11px' }}
                                                             onMouseEnter={e => hover(e, '#DC2626')}
                                                             onMouseLeave={e => hover(e, '#EF4444')}

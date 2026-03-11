@@ -44,7 +44,7 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
   const subTextColor = useColorModeValue("gray.600", "gray.300");
   const borderColor = useColorModeValue("gray.200", "gray.600");
   const scrollbarThumbColor = useColorModeValue("#CBD5E0", "#4A5568");
-  const scrollbarThumbHoverColor = useColorModeValue("#A0AEC0", "#2D3748");  
+  const scrollbarThumbHoverColor = useColorModeValue("#A0AEC0", "#2D3748");
 
   const [scenes, setScenes] = useState<SceneItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,7 +77,10 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
       });
 
       if (scenesData && Array.isArray(scenesData.data)) {
-        const sceneItems: SceneItem[] = scenesData.data.map((scene: ScenePublic, index: number) => ({
+        // Filter out the Real Mode Scene so it doesn't appear in the simulation list
+        const filteredScenes = scenesData.data.filter((s: ScenePublic) => s.label !== "Real Mode Scene");
+
+        const sceneItems: SceneItem[] = filteredScenes.map((scene: ScenePublic, index: number) => ({
           id: scene.uid,
           name: scene.label || `Scene ${index + 1}`,
           itemCount: scene.items?.length || 0,
@@ -169,50 +172,50 @@ const ScenesList = React.forwardRef<ScenesListRef, ScenesListProps>(({ title, se
   // Si usas tokens de autenticación, recuerda incluirlos en los headers.
 
   const handleDeleteScene = async (sceneId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); 
-    
+    e.stopPropagation();
+
     if (!window.confirm("¿Estás seguro de que quieres eliminar esta escena? Esta acción no se puede deshacer.")) {
-        return;
+      return;
     }
 
     setDeletingId(sceneId);
 
     try {
 
-        await ScenesService.deleteScene({ sceneId });
-        // Actualizamos la lista visualmente
-        const newScenes = scenes.filter((s) => s.id !== sceneId);
-        setScenes(newScenes);
+      await ScenesService.deleteScene({ sceneId });
+      // Actualizamos la lista visualmente
+      const newScenes = scenes.filter((s) => s.id !== sceneId);
+      setScenes(newScenes);
 
-        toast({
-            title: "Escena eliminada",
-            status: "success",
-            duration: 2000,
-            isClosable: true,
-            position: "top-right",
-        });
+      toast({
+        title: "Escena eliminada",
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+        position: "top-right",
+      });
 
-        // 3. Lógica de selección inteligente
-        if (selectedId === sceneId) {
-            if (newScenes.length > 0) {
-                setSelectedId(newScenes[0].id);
-            } else {
-                setSelectedId(null);
-            }
+      // 3. Lógica de selección inteligente
+      if (selectedId === sceneId) {
+        if (newScenes.length > 0) {
+          setSelectedId(newScenes[0].id);
+        } else {
+          setSelectedId(null);
         }
+      }
 
     } catch (error) {
-        console.error("Error deleting scene:", error);
-        toast({
-            title: "Error al eliminar",
-            description: "No se pudo conectar con la API o hubo un error.",
-            status: "error",
-            duration: 3000,
-            isClosable: true,
-            position: "top-right",
-        });
+      console.error("Error deleting scene:", error);
+      toast({
+        title: "Error al eliminar",
+        description: "No se pudo conectar con la API o hubo un error.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+        position: "top-right",
+      });
     } finally {
-        setDeletingId(null);
+      setDeletingId(null);
     }
   };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FiArrowLeft, FiWifi, FiWifiOff, FiRefreshCw, FiLock, FiChevronDown } from 'react-icons/fi';
+import { FiArrowLeft, FiWifi, FiWifiOff, FiRefreshCw, FiChevronDown, FiAlertTriangle, FiCpu } from 'react-icons/fi';
 import { useBlueprint3D } from './Blueprint3DApp';
 import { DevicesService, OrganizationsService } from '../../client';
 import type { DevicePublic } from '../../client';
@@ -8,42 +8,48 @@ import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 // ─────────────────────────────────────────────────────────────────────────────
 // GLB model map — SOURCE OF TRUTH for which devices have a 3D model
 // ─────────────────────────────────────────────────────────────────────────────
-const DEVICE_MODEL_MAP: Record<string, { model: string; thumbnail: string; type: number; label: string }> = {
+const DEVICE_MODEL_MAP: Record<string, { model: string; thumbnail: string; type: number; label: string; defaultHeight?: number }> = {
   viggo_sc50: {
     model: '/assets/glb/devices/viggo_sc50.glb',
     thumbnail: '/assets/images/devices/viggo_sc50.png',
     type: 1,
     label: 'Viggo SC50',
+    defaultHeight: 200,
   },
   allybot: {
     model: '/assets/glb/devices/allybot.glb',
     thumbnail: '/assets/images/devices/allybot.png',
     type: 1,
     label: 'Allybot',
+    defaultHeight: 137,
   },
   pandabot: {
     model: '/assets/glb/devices/pandabot.glb',
     thumbnail: '/assets/images/devices/pandabot.png',
     type: 1,
     label: 'Pandabot',
+    defaultHeight: 150,
   },
   pudu_bellabot: {
     model: '/assets/glb/devices/pudu_bellabot.glb',
     thumbnail: '/assets/images/devices/pudu_bellabot.png',
     type: 1,
     label: 'Pudu Bellabot',
+    defaultHeight: 100,
   },
   pudu_ketty: {
     model: '/assets/glb/devices/pudu_ketty.glb',
     thumbnail: '/assets/images/devices/pudu_ketty.png',
     type: 1,
     label: 'Pudu Ketty',
+    defaultHeight: 80,
   },
   eniscope: {
     model: '/assets/glb/devices/eniscope.glb',
     thumbnail: '/assets/images/devices/eniscope.png',
     type: 1,
     label: 'Eniscope',
+    defaultHeight: 200, // Example: ceiling/wall mount height
   },
 };
 
@@ -62,6 +68,11 @@ function findMapKey(device: DevicePublic): string | undefined {
     if (modelKey && modelKey === k) return k;
   }
   return undefined;
+}
+
+/** Returns true if device is a "real" (physical) robot */
+function isRealDevice(device: DevicePublic): boolean {
+  return !!(device.model && device.model.startsWith('Real-'));
 }
 
 function getOccupiedUidsFromCurrentScene(blueprint3d: any): Set<string> {
@@ -91,11 +102,99 @@ interface ModelGroup {
   units: DevicePublic[];     // all API devices matching this model
 }
 
+/** Info about where a device is currently occupied */
+interface OccupationInfo {
+  sceneId: string;
+  sceneName: string;
+  isRealScene: boolean; // whether the scene is the "real" environment
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Confirmation modal
+// ─────────────────────────────────────────────────────────────────────────────
+interface ConfirmMoveModalProps {
+  device: DevicePublic;
+  occupation: OccupationInfo;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+const ConfirmMoveModal: React.FC<ConfirmMoveModalProps> = ({ device, occupation, onConfirm, onCancel }) => (
+  <div style={{
+    position: 'fixed', inset: 0, zIndex: 9999,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }}
+    onClick={onCancel}
+  >
+    <div
+      style={{
+        background: '#fff', borderRadius: '14px',
+        padding: '28px 28px 22px',
+        maxWidth: '380px', width: '90%',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+        display: 'flex', flexDirection: 'column', gap: '16px',
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Icon + title */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{
+          background: '#FFF5F5', borderRadius: '10px', padding: '10px',
+          color: '#E53E3E', flexShrink: 0,
+        }}>
+          <FiAlertTriangle size={22} />
+        </div>
+        <div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#1A202C' }}>Robot ya asignado</div>
+          <div style={{ fontSize: '12px', color: '#718096', marginTop: '2px' }}>Esta acción moverá el robot de escena</div>
+        </div>
+      </div>
+
+      {/* Details */}
+      <div style={{
+        background: '#F7FAFC', borderRadius: '8px', padding: '12px 14px',
+        fontSize: '13px', color: '#4A5568', lineHeight: 1.6,
+        border: '1px solid #E2E8F0',
+      }}>
+        <strong style={{ color: '#1A202C' }}>{device.name}</strong> está actualmente en la escena{' '}
+        <strong style={{ color: '#2B6CB0' }}>"{occupation.sceneName}"</strong>.
+        <br />
+        Si confirmas, se eliminará de esa escena y se añadirá a la actual.
+      </div>
+
+      {/* Buttons */}
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <button
+          onClick={onCancel}
+          style={{
+            background: '#EDF2F7', border: 'none', borderRadius: '7px',
+            padding: '8px 18px', fontSize: '13px', fontWeight: 600,
+            color: '#4A5568', cursor: 'pointer',
+          }}
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={onConfirm}
+          style={{
+            background: '#E53E3E', border: 'none', borderRadius: '7px',
+            padding: '8px 18px', fontSize: '13px', fontWeight: 600,
+            color: '#fff', cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(229,62,62,0.35)',
+          }}
+        >
+          Mover aquí
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 const AddDevices: React.FC = () => {
-  const { blueprint3d, onStateChange } = useBlueprint3D();
+  const { blueprint3d, onStateChange, isRealMode } = useBlueprint3D();
   const { getActiveOrganizationId } = useOrganizationContext();
 
   const [groups, setGroups] = useState<ModelGroup[]>([]);
@@ -103,7 +202,12 @@ const AddDevices: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [occupiedUids, setOccupiedUids] = useState<Set<string>>(new Set());
+  // uid → where it's occupied (undefined = free in all scenes)
+  const [occupationMap, setOccupationMap] = useState<Record<string, OccupationInfo>>({});
+
+  // Pending confirmation dialog state
+  const [pendingDevice, setPendingDevice] = useState<DevicePublic | null>(null);
+  const [pendingOccupation, setPendingOccupation] = useState<OccupationInfo | null>(null);
 
   // Which model card is expanded in the bottom panel
   const [selectedMapKey, setSelectedMapKey] = useState<string | null>(null);
@@ -118,7 +222,15 @@ const AddDevices: React.FC = () => {
     try {
       if (orgId) {
         const res = await DevicesService.getDevicesOwn({ ownerId: orgId });
-        devices = res.data;
+        let fetchedDevices = res.data;
+
+        if (isRealMode) {
+          fetchedDevices = fetchedDevices.filter(d =>
+            d.model && d.model.startsWith('Real-') && d.enabled === true
+          );
+        }
+
+        devices = fetchedDevices;
       }
     } catch (err) {
       console.error('[AddDevices] Failed to load devices:', err);
@@ -146,35 +258,48 @@ const AddDevices: React.FC = () => {
     );
     setUngrouped(noModel);
 
-    // Compute occupied UIDs
-    const occupied = new Set<string>();
-    getOccupiedUidsFromCurrentScene(blueprint3d).forEach(uid => occupied.add(uid));
+    // Compute occupation map: uid → { sceneId, sceneName, isRealScene }
+    const newOccupationMap: Record<string, OccupationInfo> = {};
+
+    // First: check current scene in memory
+    getOccupiedUidsFromCurrentScene(blueprint3d).forEach(uid => {
+      newOccupationMap[uid] = { sceneId: '__current__', sceneName: 'esta escena', isRealScene: isRealMode };
+    });
+
     try {
       if (orgId) {
         const scenesRes = await OrganizationsService.readOrganizationScenes({ id: orgId, limit: 500 });
-        const nameToUid = new Map<string, string>(
-          devices.map(d => [d.name.toLowerCase().trim(), d.uid])
+        const nameToDevice = new Map<string, DevicePublic>(
+          devices.map(d => [d.name.toLowerCase().trim(), d])
         );
         for (const scene of scenesRes.data) {
+          // Heuristic: if scene label contains "real" or similar, mark as real scene
+          const sceneIsReal = !!(scene.label && scene.label.toLowerCase().includes('real'));
           for (const item of scene.items ?? []) {
-            const uid = nameToUid.get((item.item_name ?? '').toLowerCase().trim());
-            if (uid) occupied.add(uid);
+            const dev = nameToDevice.get((item.item_name ?? '').toLowerCase().trim());
+            if (dev && !newOccupationMap[dev.uid]) {
+              newOccupationMap[dev.uid] = {
+                sceneId: String(scene.uid ?? ''),
+                sceneName: scene.label ?? 'otra escena',
+                isRealScene: sceneIsReal,
+              };
+            }
           }
         }
       }
     } catch (err) {
       console.warn('[AddDevices] Could not fetch scenes for occupied check:', err);
     }
-    setOccupiedUids(occupied);
+    setOccupationMap(newOccupationMap);
     setLoading(false);
   };
 
   useEffect(() => {
     loadAll();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isRealMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Add a device unit to the scene ────────────────────────────────────────
-  const handleAddDevice = (device: DevicePublic) => {
+  // ── Core add logic (called after any needed confirmation) ─────────────────
+  const doAddDevice = (device: DevicePublic) => {
     if (!blueprint3d?.model?.scene) return;
     const mapKey = findMapKey(device);
     if (!mapKey) return;
@@ -193,12 +318,27 @@ const AddDevices: React.FC = () => {
       deviceImage: device.image ?? '',
       deviceMapKey: mapKey,
       deviceEnabled: device.enabled ?? false,
+      isRealDevice: isRealDevice(device),
+      elevation: asset.type === 1 ? 0 : (asset.defaultHeight || 0),
+      defaultHeight: asset.defaultHeight || 0,
     };
     try {
-      blueprint3d.model.scene.addItem(asset.type, asset.model, metadata);
-      setOccupiedUids(prev => new Set([...prev, device.uid]));
+      (blueprint3d.model.scene as any).addItem(
+        asset.type,
+        asset.model,
+        metadata,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        device.uid
+      );
 
-      // Initialize (or confirm) the device status entry so the sync hook can track it
+      setOccupationMap(prev => ({
+        ...prev,
+        [device.uid]: { sceneId: '__current__', sceneName: 'esta escena', isRealScene: isRealMode },
+      }));
+
       DevicesService.updateDeviceStatus({
         uid: device.uid,
         requestBody: {
@@ -216,10 +356,54 @@ const AddDevices: React.FC = () => {
     }
   };
 
+  // ── Add a device unit to the scene ────────────────────────────────────────
+  const handleAddDevice = (device: DevicePublic) => {
+    const occupation = occupationMap[device.uid];
+
+    if (!occupation) {
+      // Free — add directly
+      doAddDevice(device);
+      return;
+    }
+
+    // Robot is occupied somewhere.
+    // Special case: robot is REAL and is in a REAL scene, but we are in SIMULATION mode.
+    // → Allow freely: a physical robot can be "simulated" at the same time.
+    if (isRealDevice(device) && occupation.isRealScene && !isRealMode) {
+      doAddDevice(device);
+      return;
+    }
+
+    // General case: ask for confirmation before moving.
+    setPendingDevice(device);
+    setPendingOccupation(occupation);
+  };
+
+  const handleConfirmMove = () => {
+    if (pendingDevice) doAddDevice(pendingDevice);
+    setPendingDevice(null);
+    setPendingOccupation(null);
+  };
+
+  const handleCancelMove = () => {
+    setPendingDevice(null);
+    setPendingOccupation(null);
+  };
+
   const selectedGroup = groups.find(g => g.mapKey === selectedMapKey) ?? null;
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F9FC' }}>
+
+      {/* ── Confirmation modal ── */}
+      {pendingDevice && pendingOccupation && (
+        <ConfirmMoveModal
+          device={pendingDevice}
+          occupation={pendingOccupation}
+          onConfirm={handleConfirmMove}
+          onCancel={handleCancelMove}
+        />
+      )}
 
       {/* ── Sticky header ── */}
       <div style={{
@@ -246,7 +430,9 @@ const AddDevices: React.FC = () => {
       <div style={{ padding: '14px 16px 10px', flexShrink: 0 }}>
         <h5 style={{ margin: 0, fontWeight: 700, fontSize: '15px', color: '#1A202C' }}>Select a robot model</h5>
         <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#718096' }}>
-          Tap a model to see available units. <span style={{ color: '#E53E3E', fontWeight: 600 }}>Occupied</span> units are already placed.
+          Tap a model to see available units.{' '}
+          <span style={{ color: '#E53E3E', fontWeight: 600 }}>Occupied</span> units are already placed.{' '}
+          <span style={{ color: '#2B6CB0', fontWeight: 600 }}>Real</span> robots can be simulated freely.
         </p>
       </div>
 
@@ -287,7 +473,13 @@ const AddDevices: React.FC = () => {
         {!loading && groups.length > 0 && (
           <div style={gridStyle}>
             {groups.map(group => {
-              const freeCount = group.units.filter(u => !occupiedUids.has(u.uid)).length;
+              const freeCount = group.units.filter(u => {
+                const occ = occupationMap[u.uid];
+                if (!occ) return true;
+                // Real robot in real scene → free for simulation
+                if (isRealDevice(u) && occ.isRealScene && !isRealMode) return true;
+                return false;
+              }).length;
               const totalCount = group.units.length;
               const isSelected = selectedMapKey === group.mapKey;
               const allOccupied = freeCount === 0;
@@ -386,7 +578,12 @@ const AddDevices: React.FC = () => {
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#1A202C' }}>{selectedGroup.asset.label}</div>
                 <div style={{ fontSize: '11px', color: '#718096' }}>
-                  {selectedGroup.units.filter(u => !occupiedUids.has(u.uid)).length} units available
+                  {selectedGroup.units.filter(u => {
+                    const occ = occupationMap[u.uid];
+                    if (!occ) return true;
+                    if (isRealDevice(u) && occ.isRealScene && !isRealMode) return true;
+                    return false;
+                  }).length} units available
                 </div>
               </div>
             </div>
@@ -394,26 +591,43 @@ const AddDevices: React.FC = () => {
             {/* Unit list */}
             <div style={{ padding: '8px 12px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {selectedGroup.units.map(device => {
-                const isOccupied = occupiedUids.has(device.uid);
+                const occupation = occupationMap[device.uid];
+                const isReal = isRealDevice(device);
+                // Real robot in real scene → can freely add to simulation
+                const canSimulate = isReal && occupation?.isRealScene && !isRealMode;
+                const isOccupied = !!occupation && !canSimulate;
+
                 return (
                   <div key={device.uid} style={{
                     display: 'flex', alignItems: 'center', gap: '10px',
                     padding: '9px 10px',
                     borderRadius: '8px',
-                    border: `1px solid ${isOccupied ? '#FED7D7' : '#C6F6D5'}`,
-                    background: isOccupied ? '#FFF5F5' : '#F0FFF4',
+                    border: `1px solid ${isOccupied ? '#FED7D7' : canSimulate ? '#BEE3F8' : '#C6F6D5'}`,
+                    background: isOccupied ? '#FFF5F5' : canSimulate ? '#EBF8FF' : '#F0FFF4',
                   }}>
                     {/* Status dot */}
                     <div style={{
                       width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
-                      background: isOccupied ? '#E53E3E' : '#38A169',
-                      boxShadow: `0 0 0 2px ${isOccupied ? '#FEB2B2' : '#C6F6D5'}`,
+                      background: isOccupied ? '#E53E3E' : canSimulate ? '#3182CE' : '#38A169',
+                      boxShadow: `0 0 0 2px ${isOccupied ? '#FEB2B2' : canSimulate ? '#BEE3F8' : '#C6F6D5'}`,
                     }} />
 
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#2D3748', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#2D3748', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '5px' }}>
                         {device.name}
+                        {/* Real badge */}
+                        {isReal && (
+                          <span style={{
+                            fontSize: '9px', fontWeight: 700, textTransform: 'uppercase',
+                            background: '#2B6CB0', color: '#fff',
+                            padding: '1px 5px', borderRadius: '4px',
+                            letterSpacing: '0.04em', flexShrink: 0,
+                            display: 'flex', alignItems: 'center', gap: '2px',
+                          }}>
+                            <FiCpu size={8} /> Real
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '11px', color: '#718096', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontFamily: 'monospace', fontSize: '10px' }}>#{device.uid.slice(0, 8)}</span>
@@ -421,19 +635,30 @@ const AddDevices: React.FC = () => {
                           {device.enabled ? <FiWifi size={10} color="#38A169" /> : <FiWifiOff size={10} color="#A0AEC0" />}
                           {device.enabled ? 'Online' : 'Offline'}
                         </span>
+                        {/* Occupation info */}
+                        {occupation && (
+                          <span style={{ color: isOccupied ? '#C53030' : '#2B6CB0', fontSize: '10px' }}>
+                            en {occupation.sceneName}
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     {/* Action */}
                     {isOccupied ? (
-                      <div style={{
-                        fontSize: '11px', fontWeight: 700, color: '#C53030',
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                        background: '#FED7D7', padding: '4px 8px', borderRadius: '6px',
-                        flexShrink: 0,
-                      }}>
-                        <FiLock size={11} /> Occupied
-                      </div>
+                      // Occupied → show "Move here" button (with warning intent)
+                      <button
+                        onClick={() => handleAddDevice(device)}
+                        style={{
+                          ...btnStyle('#DD6B20'), flexShrink: 0, fontSize: '11px', padding: '5px 10px',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                        }}
+                        onMouseEnter={e => hover(e, '#C05621')}
+                        onMouseLeave={e => hover(e, '#DD6B20')}
+                        title={`Mover desde "${occupation?.sceneName}" a esta escena`}
+                      >
+                        <FiAlertTriangle size={11} /> Mover
+                      </button>
                     ) : (
                       <button
                         onClick={() => handleAddDevice(device)}
