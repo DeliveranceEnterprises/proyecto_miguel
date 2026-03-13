@@ -26,6 +26,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import Blueprint3DApp, { Blueprint3DAppRef } from "../../components/Blueprint3D/Blueprint3DApp";
 import ScenesList from "../../components/Blueprint3D/ScenesList";
 import RobotInfoPanel from "../../components/Blueprint3D/RobotInfoPanel";
+import PredictionPanel from "../../components/Blueprint3D/PredictionPanel";
 import "../../components/Blueprint3D/Blueprint3DApp.css";
 import { useOrganizationContext } from "../../hooks/useOrganizationContext";
 import { createDefaultFloorplan } from "../../components/Blueprint3D/utils";
@@ -846,11 +847,30 @@ function Site() {
                     />
                   )}
 
-                  {/* Robot Info Panel — only in Real Mode */}
-                  <RobotInfoPanel
-                    blueprint3DRef={blueprint3DRef}
-                    isVisible={isRealMode}
-                  />
+                  {/* Right-side Real Mode panels wrapper */}
+                  <Box
+                    position="absolute"
+                    top={4}
+                    right={4}
+                    zIndex={30}
+                    display="flex"
+                    flexDirection="row"
+                    justifyContent="flex-end"
+                    alignItems="flex-start"
+                    gap={3}
+                    pointerEvents="none"
+                    maxHeight="calc(100% - 32px)"
+                  >
+                    <RobotInfoPanel
+                      blueprint3DRef={blueprint3DRef}
+                      isVisible={isRealMode}
+                      hasSelectedItem={!!selectedItem}
+                    />
+                    <PredictionPanel
+                      isVisible={isRealMode}
+                      hasSelectedItem={!!selectedItem}
+                    />
+                  </Box>
                 </CardBody>
               </Card>
             </Box>

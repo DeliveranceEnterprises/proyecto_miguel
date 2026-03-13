@@ -2539,10 +2539,10 @@ var BP3D;
                         } else {
                             // Fallback based on filename in case custom metadata was stripped by backend
                             var p = fileName.toLowerCase();
-                            if (p.indexOf('viggo_sc50') !== -1) targetHeight = 200;
-                            else if (p.indexOf('allybot') !== -1) targetHeight = 137;
-                            else if (p.indexOf('pandabot') !== -1) targetHeight = 150;
-                            else if (p.indexOf('pudu_bellabot') !== -1) targetHeight = 100;
+                            if (p.indexOf('viggo_sc50') !== -1) targetHeight = 140;
+                            else if (p.indexOf('allybot') !== -1) targetHeight = 65;
+                            else if (p.indexOf('pandabot') !== -1) targetHeight = 140;
+                            else if (p.indexOf('pudu_bellabot') !== -1) targetHeight = 130;
                             else if (p.indexOf('pudu_ketty') !== -1) targetHeight = 80;
                             else if (p.indexOf('eniscope') !== -1) targetHeight = 200;
                         }

@@ -8,6 +8,7 @@ const POLL_INTERVAL = 1000;
 interface RobotInfoPanelProps {
     blueprint3DRef: React.RefObject<Blueprint3DAppRef>;
     isVisible: boolean;
+    hasSelectedItem?: boolean;
 }
 
 function getBatteryColor(level: number): string {
@@ -261,11 +262,17 @@ const styles: Record<string, React.CSSProperties> = {
     },
 };
 
-export default function RobotInfoPanel({ blueprint3DRef, isVisible }: RobotInfoPanelProps) {
+export default function RobotInfoPanel({ blueprint3DRef, isVisible, hasSelectedItem }: RobotInfoPanelProps) {
     const [statuses, setStatuses] = useState<StatusPublic[]>([]);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    useEffect(() => {
+        if (hasSelectedItem) {
+            setIsCollapsed(true);
+        }
+    }, [hasSelectedItem]);
 
     const fetchStatuses = async () => {
         // Get only the UIDs of devices currently loaded in the 3D scene
@@ -322,14 +329,10 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible }: RobotInfoP
 
             <div
                 style={{
-                    position: 'absolute',
-                    top: 12,
-                    right: 12,
                     width: isCollapsed ? 48 : 280,
-                    maxHeight: 'calc(100% - 24px)',
+                    flexShrink: 0,
                     display: 'flex',
                     flexDirection: 'column',
-                    zIndex: 30,
                     animation: 'panelSlideIn 0.3s ease forwards',
                     transition: 'width 0.3s ease',
                     pointerEvents: 'auto',
