@@ -9,15 +9,8 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      - VITE_API_URL=${VITE_API_URL:-http://host.docker.internal:8000}
-      - NODE_ENV=development
-      - ESBUILD_BINARY_PATH=
     command: npm run dev -- --host 0.0.0.0
-    profiles:
-      - dev
+
 
   # Production frontend service
   frontend-prod:
