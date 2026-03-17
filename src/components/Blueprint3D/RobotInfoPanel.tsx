@@ -8,7 +8,8 @@ const POLL_INTERVAL = 1000;
 interface RobotInfoPanelProps {
     blueprint3DRef: React.RefObject<Blueprint3DAppRef>;
     isVisible: boolean;
-    hasSelectedItem?: boolean;
+    isOpen: boolean;
+    onToggle: () => void;
 }
 
 function getBatteryColor(level: number): string {
@@ -262,17 +263,10 @@ const styles: Record<string, React.CSSProperties> = {
     },
 };
 
-export default function RobotInfoPanel({ blueprint3DRef, isVisible, hasSelectedItem }: RobotInfoPanelProps) {
+export default function RobotInfoPanel({ blueprint3DRef, isVisible, isOpen, onToggle }: RobotInfoPanelProps) {
     const [statuses, setStatuses] = useState<StatusPublic[]>([]);
-    const [isCollapsed, setIsCollapsed] = useState(false);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    useEffect(() => {
-        if (hasSelectedItem) {
-            setIsCollapsed(true);
-        }
-    }, [hasSelectedItem]);
 
     const fetchStatuses = async () => {
         // Get only the UIDs of devices currently loaded in the 3D scene
@@ -329,7 +323,7 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible, hasSelectedI
 
             <div
                 style={{
-                    width: isCollapsed ? 48 : 280,
+                    width: isOpen ? 280 : 48,
                     flexShrink: 0,
                     display: 'flex',
                     flexDirection: 'column',
@@ -345,20 +339,20 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible, hasSelectedI
                         backdropFilter: 'blur(16px)',
                         WebkitBackdropFilter: 'blur(16px)',
                         border: '1px solid rgba(99,179,237,0.3)',
-                        borderRadius: isCollapsed ? 12 : '12px 12px 0 0',
-                        padding: isCollapsed ? '10px' : '12px 14px',
+                        borderRadius: isOpen ? '12px 12px 0 0' : 12,
+                        padding: isOpen ? '12px 14px' : '10px',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: isCollapsed ? 'center' : 'space-between',
+                        justifyContent: isOpen ? 'space-between' : 'center',
                         gap: 8,
                         boxShadow: '0 0 24px rgba(99,179,237,0.15)',
                         flexShrink: 0,
                         cursor: 'pointer',
                     }}
-                    onClick={() => setIsCollapsed((c) => !c)}
-                    title={isCollapsed ? 'Expandir panel de robots' : 'Colapsar panel de robots'}
+                    onClick={onToggle}
+                    title={isOpen ? 'Colapsar panel de robots' : 'Expandir panel de robots'}
                 >
-                    {!isCollapsed && (
+                    {isOpen && (
                         <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <div
@@ -414,7 +408,7 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible, hasSelectedI
                         </>
                     )}
 
-                    {isCollapsed && (
+                    {!isOpen && (
                         <div
                             style={{
                                 width: 28,
@@ -440,7 +434,7 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible, hasSelectedI
                 </div>
 
                 {/* Robot cards scrollable body */}
-                {!isCollapsed && (
+                {isOpen && (
                     <div
                         style={{
                             overflowY: 'auto',

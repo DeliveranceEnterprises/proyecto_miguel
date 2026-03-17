@@ -17,11 +17,11 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: process.env.VITE_API_URL || "http://127.0.0.1:8000",
+        target: process.env.VITE_API_URL || "http://host.docker.internal:8000",
         changeOrigin: true,
       },
       "/static": {
-        target: process.env.VITE_API_URL || "https://deliverance-api.kindfield-4439a458.westeurope.azurecontainerapps.io/",
+        target: process.env.VITE_API_URL || "http://host.docker.internal:8000",
         changeOrigin: true,
       }
     },

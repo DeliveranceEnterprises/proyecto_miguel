@@ -1,5 +1,4 @@
 services:
-  # Development frontend service
   frontend-dev:
     build:
       context: .
@@ -9,10 +8,15 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://host.docker.internal:8000}
+      - NODE_ENV=development
     command: npm run dev -- --host 0.0.0.0
+    profiles:
+      - dev
 
-
-  # Production frontend service
   frontend-prod:
     build:
       context: .
@@ -28,7 +32,6 @@ services:
     profiles:
       - prod
 
-  # Alternative: Development with hot reload using Vite
   frontend-vite:
     image: node:22-alpine
     working_dir: /app

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Button,
@@ -13,7 +13,8 @@ import {
 
 interface PredictionPanelProps {
   isVisible: boolean;
-  hasSelectedItem: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 interface PredictWeekResponse {
@@ -33,18 +34,12 @@ interface PredictWeekResponse {
 
 export default function PredictionPanel({
   isVisible,
-  hasSelectedItem,
+  isOpen,
+  onToggle,
 }: PredictionPanelProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [weeks, setWeeks] = useState<number>(1);
   const [isPredicting, setIsPredicting] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (hasSelectedItem) {
-      setIsCollapsed(true);
-    }
-  }, [hasSelectedItem]);
 
   if (!isVisible) return null;
 
@@ -96,11 +91,12 @@ export default function PredictionPanel({
   return (
     <div
       style={{
-        position: "absolute",
-        top: 20,
-        right: 20,
-        width: 280,
-        zIndex: 20,
+        width: isOpen ? 280 : 48,
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        transition: "width 0.3s ease",
+        pointerEvents: "auto",
       }}
     >
       <div
@@ -109,40 +105,59 @@ export default function PredictionPanel({
           backdropFilter: "blur(16px)",
           WebkitBackdropFilter: "blur(16px)",
           border: "1px solid rgba(167, 139, 250, 0.18)",
-          borderRadius: isCollapsed ? 12 : "12px 12px 0 0",
+          borderRadius: isOpen ? "12px 12px 0 0" : 12,
           boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
           overflow: "hidden",
         }}
       >
         <Flex
           align="center"
-          justify="space-between"
-          px={4}
+          justify={isOpen ? "space-between" : "center"}
+          px={isOpen ? 4 : 2}
           py={3}
           cursor="pointer"
-          onClick={() => setIsCollapsed((prev) => !prev)}
+          onClick={onToggle}
         >
-          <Box>
-            <Text
-              fontSize="xs"
-              fontWeight="700"
-              textTransform="uppercase"
-              letterSpacing="0.08em"
-              color="rgba(192, 132, 252, 0.95)"
-            >
-              Predicción
-            </Text>
-            <Text fontSize="11px" color="rgba(148,163,184,0.8)" mt={1}>
-              Generar próximas semanas desde la API
-            </Text>
-          </Box>
+          {isOpen ? (
+            <>
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.08em"
+                  color="rgba(192, 132, 252, 0.95)"
+                >
+                  Predicción
+                </Text>
+                <Text fontSize="11px" color="rgba(148,163,184,0.8)" mt={1}>
+                  Generar próximas semanas desde la API
+                </Text>
+              </Box>
 
-          <Text fontSize="lg" color="whiteAlpha.900" userSelect="none">
-            {isCollapsed ? "＋" : "－"}
-          </Text>
+              <Text fontSize="lg" color="whiteAlpha.900" userSelect="none">
+                －
+              </Text>
+            </>
+          ) : (
+            <Box
+              width="28px"
+              height="28px"
+              borderRadius="8px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              bg="linear-gradient(135deg, #8B5CF6, #C084FC)"
+              boxShadow="0 0 10px rgba(192,132,252,0.45)"
+            >
+              <Text fontSize="10px" fontWeight="800" color="white">
+                AI
+              </Text>
+            </Box>
+          )}
         </Flex>
 
-        {!isCollapsed && (
+        {isOpen && (
           <div
             style={{
               background: "rgba(10,18,35,0.8)",

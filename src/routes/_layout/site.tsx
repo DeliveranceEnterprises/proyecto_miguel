@@ -39,6 +39,8 @@ export const Route = createFileRoute("/_layout/site")({
   component: Site,
 });
 
+type RealModePanel = "robots" | "prediction" | null;
+
 // Item Editing Panel Component - receives selectedItem and onClose as props to avoid context issues
 function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClose: () => void }) {
   const [itemDimensions, setItemDimensions] = useState({ width: 0, height: 0, depth: 0 });
@@ -392,6 +394,9 @@ function Site() {
   // State to track if user is in editing mode
   const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
 
+  // State to control which Real Mode side panel is open
+  const [openRealPanel, setOpenRealPanel] = useState<RealModePanel>(null);
+
   // State to track selected item for editing
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
@@ -495,6 +500,10 @@ function Site() {
     }
   }, [isRealMode]); // intentionally omit other dependencies to ONLY trigger on toggle
 
+
+  const handleToggleRealPanel = (panel: Exclude<RealModePanel, null>) => {
+    setOpenRealPanel((prev) => (prev === panel ? null : panel));
+  };
 
   // Handle creating a new plan
   const handleCreateNewPlan = () => {
@@ -625,6 +634,18 @@ function Site() {
   const handleSelectedFloorChange = (floor: any) => {
     setSelectedFloor(floor);
   };
+
+  useEffect(() => {
+    // Reset panels whenever Real Mode changes
+    setOpenRealPanel(null);
+  }, [isRealMode]);
+
+  useEffect(() => {
+    // Collapse both panels when selecting an item or entering editing mode
+    if (selectedItem || isEditingMode) {
+      setOpenRealPanel(null);
+    }
+  }, [selectedItem, isEditingMode]);
 
   // Handle closing the wall/floor texture panel
   const handleCloseTexturePanel = () => {
@@ -864,11 +885,13 @@ function Site() {
                     <RobotInfoPanel
                       blueprint3DRef={blueprint3DRef}
                       isVisible={isRealMode}
-                      hasSelectedItem={!!selectedItem}
+                      isOpen={openRealPanel === "robots"}
+                      onToggle={() => handleToggleRealPanel("robots")}
                     />
                     <PredictionPanel
                       isVisible={isRealMode}
-                      hasSelectedItem={!!selectedItem}
+                      isOpen={openRealPanel === "prediction"}
+                      onToggle={() => handleToggleRealPanel("prediction")}
                     />
                   </Box>
                 </CardBody>
