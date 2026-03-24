@@ -879,7 +879,7 @@ function Site() {
                     justifyContent="flex-end"
                     alignItems="flex-start"
                     gap={3}
-                    pointerEvents="none"
+                    pointerEvents="auto"
                     maxHeight="calc(100% - 32px)"
                   >
                     <RobotInfoPanel

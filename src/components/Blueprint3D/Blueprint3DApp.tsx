@@ -1,4 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import Viewer from './Viewer';
 import Floorplanner from './Floorplanner';
 import AddItems from './AddItems';
@@ -6,7 +10,6 @@ import AddDevices from './AddDevices';
 import AddTasks from './AddTasks';
 import TaskList from './TaskList';
 import { useDeviceSync } from '../../hooks/useDeviceSync';
-
 import { generateUID } from './utils';
 
 // Declare global window interface
@@ -19,17 +22,18 @@ declare global {
   const BP3D: any;
 }
 
-// Define the Blueprint3D class structure based on the original code
 interface Blueprint3DInstance {
   opts: any;
   model: {
     scene: {
       addItem: (type: number, url: string, metadata: any) => void;
-      itemLoadingCallbacks: { add: (callback: Function) => void };
-      itemLoadedCallbacks: { add: (callback: Function) => void };
+      itemLoadingCallbacks?: { add: (callback: Function) => void };
+      itemLoadedCallbacks?: { add: (callback: Function) => void };
+      getItems?: () => any[];
     };
     floorplan: {
       update: () => void;
+      getRooms?: () => any[];
     };
     loadSerialized: (data: string) => void;
     exportSerialized: () => string;
@@ -47,28 +51,25 @@ interface Blueprint3DInstance {
     getCamera: () => any;
     getScene: () => any;
     needsUpdate: () => void;
-    itemSelectedCallbacks: { add: (callback: Function) => void };
-    itemUnselectedCallbacks: { add: (callback: Function) => void };
-    wallClicked: { add: (callback: Function) => void };
-    floorClicked: { add: (callback: Function) => void };
-    nothingClicked: { add: (callback: Function) => void };
-    stopSpin: () => void;
+    itemSelectedCallbacks?: { add: (callback: Function) => void };
+    itemUnselectedCallbacks?: { add: (callback: Function) => void };
+    wallClicked?: { add: (callback: Function) => void };
+    floorClicked?: { add: (callback: Function) => void };
+    nothingClicked?: { add: (callback: Function) => void };
+    stopSpin?: () => void;
   };
   floorplanner: {
     setMode: (mode: string) => void;
     reset: () => void;
     resizeView: () => void;
-    modeResetCallbacks: { add: (callback: Function) => void };
+    modeResetCallbacks?: { add: (callback: Function) => void };
     mouseX: number;
     mouseY: number;
   };
 }
 
-// Define the application states
 type AppState = 'DESIGN' | 'FLOORPLAN' | 'SHOP' | 'DEVICES' | 'TASKS' | 'TASK_LIST';
 
-
-// Define the Blueprint3D context
 interface Blueprint3DContextType {
   blueprint3d: Blueprint3DInstance | null;
   appState: AppState;
@@ -95,11 +96,9 @@ interface Blueprint3DContextType {
   onSelectedWallChange?: (wall: any) => void;
   onSelectedFloorChange?: (floor: any) => void;
   onWaypointPick?: (callback: (x: number, z: number) => void) => (() => void);
-  /** Ref shared with TaskList so the sync hook can skip animating devices */
   simulatingUidRef: React.MutableRefObject<string | null>;
 }
 
-// Create the context
 export const Blueprint3DContext = React.createContext<Blueprint3DContextType | null>(null);
 
 export interface Blueprint3DAppProps {
@@ -120,11 +119,9 @@ export interface Blueprint3DAppRef {
   createNewPlan: () => void;
   clearSelections: () => void;
   setControllerEnabled: (enabled: boolean) => void;
-  /** Returns the device_uid of every robot currently in the scene */
   getSceneDeviceUids: () => string[];
 }
 
-// Hook to use the Blueprint3D context
 export const useBlueprint3D = () => {
   const context = React.useContext(Blueprint3DContext);
   if (!context) {
@@ -153,254 +150,264 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   const [selectedFloor, setSelectedFloor] = useState<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentUID, setCurrentUID] = useState<string>('');
+
   const componentMounted = useRef(false);
-  /** Shared with TaskList — holds the uid of the device currently simulating */
   const simulatingUidRef = useRef<string | null>(null);
 
-  const activeItemUid = selectedItem?.metadata?.device_uid || selectedItem?.metadata?.deviceId || null;
+  const scriptsLoadedRef = useRef(false);
+  const bp3dInstanceRef = useRef<Blueprint3DInstance | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const initTimeoutRef = useRef<number | null>(null);
 
-  // ── Bidirectional sync hook (500 ms polling) ─────────────────────────────
   useDeviceSync(blueprint3d, simulatingUidRef);
 
-  // Track when component mounts
   useEffect(() => {
     componentMounted.current = true;
     return () => {
       componentMounted.current = false;
+
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      if (initTimeoutRef.current !== null) {
+        window.clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
+      }
+
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+      bp3dInstanceRef.current = null;
     };
   }, []);
 
-  // Notify parent when selected item changes
   useEffect(() => {
-    if (onSelectedItemChange) {
-      onSelectedItemChange(selectedItem);
-    }
+    if (onSelectedItemChange) onSelectedItemChange(selectedItem);
   }, [selectedItem, onSelectedItemChange]);
 
-  // Notify parent when selected wall changes
   useEffect(() => {
-    if (onSelectedWallChange) {
-      onSelectedWallChange(selectedWall);
-    }
+    if (onSelectedWallChange) onSelectedWallChange(selectedWall);
   }, [selectedWall, onSelectedWallChange]);
 
-  // Notify parent when selected floor changes
   useEffect(() => {
-    if (onSelectedFloorChange) {
-      onSelectedFloorChange(selectedFloor);
-    }
+    if (onSelectedFloorChange) onSelectedFloorChange(selectedFloor);
   }, [selectedFloor, onSelectedFloorChange]);
 
   useEffect(() => {
-    // Load and initialize Blueprint3D library
+    if (scriptsLoadedRef.current) return;
+    scriptsLoadedRef.current = true;
+
+    let cancelled = false;
+
+    const loadScript = (src: string): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const existing = document.querySelector(`script[src="${src}"]`) as HTMLScriptElement | null;
+        if (existing) {
+          if (existing.dataset.loaded === 'true') {
+            resolve();
+            return;
+          }
+
+          const onLoad = () => {
+            existing.dataset.loaded = 'true';
+            resolve();
+          };
+          const onError = () => reject(new Error(`Failed to load script: ${src}`));
+
+          existing.addEventListener('load', onLoad, { once: true });
+          existing.addEventListener('error', onError, { once: true });
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = false;
+
+        script.onload = () => {
+          script.dataset.loaded = 'true';
+          resolve();
+        };
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+
+        document.head.appendChild(script);
+      });
+
     const loadBlueprint3D = async () => {
       try {
-        console.log('Loading Blueprint3D library...');
+        if ((window as any).BP3D && (window as any).THREE && (window as any).jQuery) {
+          if (!cancelled) setIsInitialized(true);
+          return;
+        }
 
-        const jqueryScript = document.createElement('script');
-        jqueryScript.src = jquerySrc;
-        jqueryScript.onerror = (error) => {
-          console.error('Failed to load jQuery:', error);
-        };
-        jqueryScript.onload = () => {
-          console.log('jQuery loaded');
+        await loadScript(jquerySrc);
+        await loadScript(threeSrc);
 
-          const threeScript = document.createElement('script');
-          threeScript.src = threeSrc;
-          threeScript.onerror = (error) => {
-            console.error('Failed to load Three.js:', error);
-          };
-          threeScript.onload = () => {
-            console.log('Three.js loaded');
+        try {
+          await loadScript('/plan3d/js/GLTFLoader.js');
+        } catch (error) {
+          console.warn('Failed to load GLTFLoader:', error);
+        }
 
-            const gltfLoaderScript = document.createElement('script');
-            gltfLoaderScript.src = '/plan3d/js/GLTFLoader.js';
-            gltfLoaderScript.onerror = (error) => {
-              console.warn('Failed to load GLTFLoader:', error);
-              loadBp3d();
-            };
-            gltfLoaderScript.onload = () => {
-              console.log('GLTFLoader loaded');
-              loadBp3d();
-            };
-            document.head.appendChild(gltfLoaderScript);
+        await loadScript(bp3dSrc);
 
-            function loadBp3d() {
-              const bp3dScript = document.createElement('script');
-              bp3dScript.src = bp3dSrc;
-              bp3dScript.onerror = (error) => {
-                console.error('Failed to load Blueprint3D script:', error);
-              };
-              bp3dScript.onload = () => {
-                console.log('Blueprint3D library loaded');
-                setTimeout(() => {
-                  if (typeof BP3D !== 'undefined') {
-                    (window as any).BP3D = BP3D;
-                    setIsInitialized(true);
-                  } else {
-                    console.error('BP3D not found globally after loading');
-                  }
-                }, 200);
-              };
-              document.head.appendChild(bp3dScript);
-            }
-          };
+        if (cancelled) return;
 
-          document.head.appendChild(threeScript);
-        };
+        if (typeof (window as any).BP3D === 'undefined' && typeof BP3D !== 'undefined') {
+          (window as any).BP3D = BP3D;
+        }
 
-        document.head.appendChild(jqueryScript);
-
+        if (typeof (window as any).BP3D !== 'undefined') {
+          setIsInitialized(true);
+        } else {
+          console.error('BP3D not found globally after loading');
+        }
       } catch (error) {
         console.error('Failed to initialize Blueprint3D:', error);
       }
     };
 
-    loadBlueprint3D();
-  }, []);
+    void loadBlueprint3D();
 
-  // Initialize Blueprint3D after DOM elements are available
+    return () => {
+      cancelled = true;
+    };
+  }, [jquerySrc, threeSrc, bp3dSrc]);
+
   useEffect(() => {
-    if (!isInitialized || typeof BP3D === 'undefined' || !componentMounted.current) {
+    if (!isInitialized || !componentMounted.current || bp3dInstanceRef.current) {
       return;
     }
 
-    const initializeBlueprint3D = (retryCount = 0) => {
+    const initializeBlueprint3D = () => {
+      const viewerElement = document.getElementById('viewer');
+      const floorplannerCanvas = document.getElementById('floorplanner-canvas');
+
+      if (!viewerElement || !floorplannerCanvas) {
+        return;
+      }
+
+      if (!(window as any).jQuery?.('#viewer')?.length) {
+        console.error('jQuery cannot find #viewer element');
+        return;
+      }
+
+      const THREE = (window as any).THREE;
+      const BP3DLib = (window as any).BP3D ?? (typeof BP3D !== 'undefined' ? BP3D : undefined);
+
+      if (!THREE || !THREE.PerspectiveCamera || !THREE.WebGLRenderer) {
+        console.error('THREE.js library not properly loaded');
+        return;
+      }
+
+      if (!BP3DLib?.Blueprint3d) {
+        console.error('Blueprint3D library not available');
+        return;
+      }
+
       try {
-        const viewerElement = document.getElementById('viewer');
-        const floorplannerElement = document.getElementById('floorplanner-canvas');
-
-        if (!viewerElement || !floorplannerElement) {
-          if (retryCount < 20) {
-            setTimeout(() => initializeBlueprint3D(retryCount + 1), 50);
-            return;
-          } else {
-            console.error('Failed to find DOM elements after 20 attempts.');
-            return;
-          }
+        const textureBase = assetsBaseUrl.replace(/\/$/, '') + '/';
+        if (
+          THREE.ImageUtils &&
+          typeof THREE.ImageUtils.loadTexture === 'function' &&
+          !THREE.ImageUtils.__wrappedByApp
+        ) {
+          const originalLoadTexture = THREE.ImageUtils.loadTexture.bind(THREE.ImageUtils);
+          THREE.ImageUtils.loadTexture = function (url: string, ...rest: any[]) {
+            const fixedUrl = /^(https?:\/\/|data:|\/)/.test(url) ? url : (textureBase + url);
+            return originalLoadTexture(fixedUrl, ...rest as [any]);
+          };
+          THREE.ImageUtils.__wrappedByApp = true;
         }
+      } catch (e) {
+        console.warn('Could not wrap THREE.ImageUtils.loadTexture:', e);
+      }
 
-        const opts = {
-          floorplannerElement: 'floorplanner-canvas',
-          threeElement: '#viewer',
-          threeCanvasElement: null,
-          textureDir: assetsBaseUrl.replace(/\/$/, '') + '/rooms/textures/',
-          widget: false
-        };
+      const opts = {
+        floorplannerElement: 'floorplanner-canvas',
+        threeElement: '#viewer',
+        threeCanvasElement: null,
+        textureDir: assetsBaseUrl.replace(/\/$/, '') + '/rooms/textures/',
+        widget: false,
+      };
 
-        const jQueryViewer = (window as any).$('#viewer');
-        if (jQueryViewer.length === 0) {
-          console.error('jQuery cannot find #viewer element!');
-          return;
-        }
+      try {
+        const bp3d = new BP3DLib.Blueprint3d(opts) as Blueprint3DInstance;
 
-        const THREE = (window as any).THREE;
-        if (!THREE || !THREE.PerspectiveCamera || !THREE.WebGLRenderer) {
-          console.error('THREE.js library not properly loaded!');
-          return;
-        }
-
-        try {
-          const textureBase = assetsBaseUrl.replace(/\/$/, '') + '/';
-          if (THREE.ImageUtils && typeof THREE.ImageUtils.loadTexture === 'function') {
-            const originalLoadTexture = THREE.ImageUtils.loadTexture.bind(THREE.ImageUtils);
-            THREE.ImageUtils.loadTexture = function (url: string, ...rest: any[]) {
-              const fixedUrl = /^(https?:\/\/|data:|\/)/.test(url) ? url : (textureBase + url);
-              return originalLoadTexture(fixedUrl, ...rest as [any]);
-            };
-          }
-        } catch (e) {
-          console.warn('Could not wrap THREE.ImageUtils.loadTexture:', e);
-        }
-
-        const bp3d = new BP3D.Blueprint3d(opts);
-
-        if (bp3d.three) {
-          if (bp3d.three.itemSelectedCallbacks) {
-            bp3d.three.itemSelectedCallbacks.add((item: any) => {
-              setSelectedItem(item);
-            });
-          }
-
-          if (bp3d.three.itemUnselectedCallbacks) {
-            bp3d.three.itemUnselectedCallbacks.add(() => {
-              setSelectedItem(null);
-            });
-          }
-
-          if (bp3d.model && bp3d.model.scene) {
-            if (bp3d.model.scene.itemLoadingCallbacks) {
-              bp3d.model.scene.itemLoadingCallbacks.add(() => setIsLoading(true));
-            }
-            if (bp3d.model.scene.itemLoadedCallbacks) {
-              bp3d.model.scene.itemLoadedCallbacks.add(() => setIsLoading(false));
-            }
-          }
-
-          if (bp3d.three.wallClicked) {
-            bp3d.three.wallClicked.add((wall: any) => {
-              setSelectedWall(wall);
-              setSelectedFloor(null);
-              setSelectedItem(null);
-            });
-          }
-
-          if (bp3d.three.floorClicked) {
-            bp3d.three.floorClicked.add((floor: any) => {
-              setSelectedFloor(floor);
-              setSelectedWall(null);
-              setSelectedItem(null);
-            });
-          }
-
-          if (bp3d.three.nothingClicked) {
-            bp3d.three.nothingClicked.add(() => {
-              setSelectedWall(null);
-              setSelectedFloor(null);
-            });
-          }
-
-          if (bp3d.three.getController) {
-            const controller = bp3d.three.getController();
-            if (controller) {
-              controller.enabled = false;
-            }
-          }
-
-          if (bp3d.three.updateWindowSize) {
-            setTimeout(() => {
-              bp3d.three.updateWindowSize();
-              const viewerElement = document.getElementById('viewer');
-              if (viewerElement) {
-                viewerElement.style.outline = 'none';
-                viewerElement.tabIndex = -1;
-
-                // Add ResizeObserver to handle split-pane layout changes reliably
-                const resizeObserver = new ResizeObserver(() => {
-                  bp3d.three.updateWindowSize();
-                  if (bp3d.three.centerCamera && (appState === 'DESIGN' || appState === 'SHOP' || appState === 'DEVICES')) {
-                    // Only center camera if we aren't potentially dragging waypoints around
-                    bp3d.three.centerCamera();
-                  }
-                });
-                resizeObserver.observe(viewerElement);
-
-                // Track observer for cleanup if needed, but it lives as long as the component does
-              }
-            }, 100);
-          }
-        }
-
+        bp3dInstanceRef.current = bp3d;
         setBlueprint3d(bp3d);
+
+        bp3d.three?.itemSelectedCallbacks?.add?.((item: any) => {
+          setSelectedItem(item);
+        });
+
+        bp3d.three?.itemUnselectedCallbacks?.add?.(() => {
+          setSelectedItem(null);
+        });
+
+        bp3d.model?.scene?.itemLoadingCallbacks?.add?.(() => setIsLoading(true));
+        bp3d.model?.scene?.itemLoadedCallbacks?.add?.(() => setIsLoading(false));
+
+        bp3d.three?.wallClicked?.add?.((wall: any) => {
+          setSelectedWall(wall);
+          setSelectedFloor(null);
+          setSelectedItem(null);
+        });
+
+        bp3d.three?.floorClicked?.add?.((floor: any) => {
+          setSelectedFloor(floor);
+          setSelectedWall(null);
+          setSelectedItem(null);
+        });
+
+        bp3d.three?.nothingClicked?.add?.(() => {
+          setSelectedWall(null);
+          setSelectedFloor(null);
+        });
+
+        const controller = bp3d.three?.getController?.();
+        if (controller) {
+          controller.enabled = false;
+        }
+
+        viewerElement.style.outline = 'none';
+        viewerElement.tabIndex = -1;
+
+        bp3d.three?.updateWindowSize?.();
+
+        resizeObserverRef.current?.disconnect();
+        resizeObserverRef.current = new ResizeObserver(() => {
+          bp3d.three?.updateWindowSize?.();
+        });
+        resizeObserverRef.current.observe(viewerElement);
       } catch (error) {
         console.error('Error creating Blueprint3D instance:', error);
       }
     };
 
-    requestAnimationFrame(() => {
-      setTimeout(() => initializeBlueprint3D(0), 100);
+    rafRef.current = requestAnimationFrame(() => {
+      initTimeoutRef.current = window.setTimeout(() => {
+        initializeBlueprint3D();
+      }, 100);
     });
-  }, [isInitialized]);
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      if (initTimeoutRef.current !== null) {
+        window.clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
+      }
+
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+      bp3dInstanceRef.current = null;
+    };
+  }, [isInitialized, assetsBaseUrl]);
 
   const handleStateChange = (newState: AppState) => {
     setAppState(newState);
@@ -417,55 +424,52 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
               floorplannerElement.style.height = height + 'px';
               blueprint3d.floorplanner.resizeView();
               setTimeout(() => {
-                if (blueprint3d.floorplanner?.reset) {
-                  blueprint3d.floorplanner.reset();
-                }
+                blueprint3d.floorplanner?.reset?.();
               }, 50);
             }
           }, 100);
         }
       } else if (newState === 'DESIGN') {
-        if (blueprint3d.three) {
-          blueprint3d.three.updateWindowSize();
-          setTimeout(() => {
-            blueprint3d.three?.centerCamera?.();
-          }, 100);
-        }
-        if (blueprint3d.model?.floorplan) {
-          blueprint3d.model.floorplan.update();
-        }
+        blueprint3d.three?.updateWindowSize?.();
+        setTimeout(() => {
+          blueprint3d.three?.centerCamera?.();
+        }, 100);
+
+        blueprint3d.model?.floorplan?.update?.();
       }
 
-      if (blueprint3d.three?.stopSpin) {
-        blueprint3d.three.stopSpin();
-      }
+      blueprint3d.three?.stopSpin?.();
 
-      if (blueprint3d.three?.getController) {
-        const controller = blueprint3d.three.getController();
-        if (controller?.setSelectedObject) {
-          controller.setSelectedObject(null);
-        }
-      }
+      const controller = blueprint3d.three?.getController?.();
+      controller?.setSelectedObject?.(null);
     }
   };
 
   const handleItemSelect = (item: any) => setSelectedItem(item);
   const handleItemUnselect = () => setSelectedItem(null);
   const handleLoadingChange = (loading: boolean) => setIsLoading(loading);
-  const handleWallSelect = (wall: any) => { setSelectedWall(wall); setSelectedFloor(null); setSelectedItem(null); };
-  const handleFloorSelect = (floor: any) => { setSelectedFloor(floor); setSelectedWall(null); setSelectedItem(null); };
-  const handleTextureReset = () => { setSelectedWall(null); setSelectedFloor(null); };
+  const handleWallSelect = (wall: any) => {
+    setSelectedWall(wall);
+    setSelectedFloor(null);
+    setSelectedItem(null);
+  };
+  const handleFloorSelect = (floor: any) => {
+    setSelectedFloor(floor);
+    setSelectedWall(null);
+    setSelectedItem(null);
+  };
+  const handleTextureReset = () => {
+    setSelectedWall(null);
+    setSelectedFloor(null);
+  };
 
   const handleClearSelections = () => {
     setSelectedWall(null);
     setSelectedFloor(null);
     setSelectedItem(null);
-    if (blueprint3d?.three?.getController) {
-      const controller = blueprint3d.three.getController();
-      if (controller?.setSelectedObject) {
-        controller.setSelectedObject(null);
-      }
-    }
+
+    const controller = blueprint3d?.three?.getController?.();
+    controller?.setSelectedObject?.(null);
   };
 
   const handleUIDChange = (uid: string) => setCurrentUID(uid);
@@ -474,36 +478,38 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     if (blueprint3d?.model) {
       const newUID = generateUID();
       const defaultFloorplan = {
-        "uid": newUID,
-        "floorplan": {
-          "corners": {
-            "f90da5e3-9e0e-eba7-173d-eb0b071e838e": { "x": 204.85099999999989, "y": 289.052 },
-            "da026c08-d76a-a944-8e7b-096b752da9ed": { "x": 672.2109999999999, "y": 289.052 },
-            "4e3d65cb-54c0-0681-28bf-bddcc7bdb571": { "x": 672.2109999999999, "y": -178.308 },
-            "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2": { "x": 204.85099999999989, "y": -178.308 }
+        uid: newUID,
+        floorplan: {
+          corners: {
+            "f90da5e3-9e0e-eba7-173d-eb0b071e838e": { x: 204.85099999999989, y: 289.052 },
+            "da026c08-d76a-a944-8e7b-096b752da9ed": { x: 672.2109999999999, y: 289.052 },
+            "4e3d65cb-54c0-0681-28bf-bddcc7bdb571": { x: 672.2109999999999, y: -178.308 },
+            "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2": { x: 204.85099999999989, y: -178.308 }
           },
-          "walls": [
-            { "corner1": "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2", "corner2": "f90da5e3-9e0e-eba7-173d-eb0b071e838e", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } },
-            { "corner1": "f90da5e3-9e0e-eba7-173d-eb0b071e838e", "corner2": "da026c08-d76a-a944-8e7b-096b752da9ed", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } },
-            { "corner1": "da026c08-d76a-a944-8e7b-096b752da9ed", "corner2": "4e3d65cb-54c0-0681-28bf-bddcc7bdb571", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } },
-            { "corner1": "4e3d65cb-54c0-0681-28bf-bddcc7bdb571", "corner2": "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2", "frontTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 }, "backTexture": { "url": "/plan3d/rooms/textures/wallmap.png", "stretch": true, "scale": 0 } }
+          walls: [
+            { corner1: "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2", corner2: "f90da5e3-9e0e-eba7-173d-eb0b071e838e", frontTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 }, backTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 } },
+            { corner1: "f90da5e3-9e0e-eba7-173d-eb0b071e838e", corner2: "da026c08-d76a-a944-8e7b-096b752da9ed", frontTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 }, backTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 } },
+            { corner1: "da026c08-d76a-a944-8e7b-096b752da9ed", corner2: "4e3d65cb-54c0-0681-28bf-bddcc7bdb571", frontTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 }, backTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 } },
+            { corner1: "4e3d65cb-54c0-0681-28bf-bddcc7bdb571", corner2: "71d4f128-ae80-3d58-9bd2-711c6ce6cdf2", frontTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 }, backTexture: { url: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 } }
           ],
-          "wallTextures": [],
-          "floorTextures": {},
-          "newFloorTextures": {
+          wallTextures: [],
+          floorTextures: {},
+          newFloorTextures: {
             "4e3d65cb-54c0-0681-28bf-bddcc7bdb571,71d4f128-ae80-3d58-9bd2-711c6ce6cdf2,da026c08-d76a-a944-8e7b-096b752da9ed,f90da5e3-9e0e-eba7-173d-eb0b071e838e": {
-              "url": "/plan3d/rooms/textures/hardwood.png",
-              "scale": 400
+              url: "/plan3d/rooms/textures/hardwood.png",
+              scale: 400
             }
           }
         },
-        "items": []
+        items: []
       };
+
       blueprint3d.model.loadSerialized(JSON.stringify(defaultFloorplan));
       handleUIDChange(newUID);
+
       setTimeout(() => {
         try {
-          const rooms = (blueprint3d as any)?.model?.floorplan?.getRooms?.();
+          const rooms = blueprint3d?.model?.floorplan?.getRooms?.();
           if (rooms?.length) {
             rooms.forEach((room: any) => room.setTexture('/plan3d/rooms/textures/hardwood.png', true, 400));
           }
@@ -518,10 +524,14 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     if (blueprint3d?.model) {
       handleStateChange('DESIGN');
       blueprint3d.model.loadSerialized(JSON.stringify(planData));
-      if (planData.uid) handleUIDChange(planData.uid);
+
+      if (planData.uid) {
+        handleUIDChange(planData.uid);
+      }
+
       setTimeout(() => {
         try {
-          const rooms = (blueprint3d as any)?.model?.floorplan?.getRooms?.();
+          const rooms = blueprint3d?.model?.floorplan?.getRooms?.();
           if (rooms?.length && planData.floorplan?.newFloorTextures) {
             rooms.forEach((room: any) => {
               const textureKeys = Object.keys(planData.floorplan.newFloorTextures);
@@ -543,11 +553,9 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     createNewPlan: handleCreateNewPlan,
     clearSelections: handleClearSelections,
     setControllerEnabled: (enabled: boolean) => {
-      if (blueprint3d?.three?.getController) {
-        const controller = blueprint3d.three.getController();
-        if (controller) {
-          controller.enabled = enabled;
-        }
+      const controller = blueprint3d?.three?.getController?.();
+      if (controller) {
+        controller.enabled = enabled;
       }
     },
     getSceneDeviceUids: (): string[] => {
@@ -559,91 +567,87 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     },
   }));
 
-  // ─── Styles for the TASKS split layout ───────────────────────────────────────
   const isTasksMode = appState === 'TASKS';
   const isTaskListMode = appState === 'TASK_LIST';
   const isSidePanel = isTasksMode || isTaskListMode;
 
-
   return (
-    <Blueprint3DContext.Provider value={{
-      blueprint3d,
-      appState,
-      isRealMode,
-      selectedItem,
-      isLoading,
-      selectedWall,
-      selectedFloor,
-      assetsBaseUrl,
-      currentUID,
-      onStateChange: handleStateChange,
-      onItemSelect: handleItemSelect,
-      onItemUnselect: handleItemUnselect,
-      onLoadingChange: handleLoadingChange,
-      onWallSelect: handleWallSelect,
-      onFloorSelect: handleFloorSelect,
-      onTextureReset: handleTextureReset,
-      onUIDChange: handleUIDChange,
-      createNewPlan: handleCreateNewPlan,
-      loadPlan: handleLoadPlan,
-      onSceneSaved,
-      onEditingModeChange,
-      onSelectedItemChange,
-      onSelectedWallChange,
-      onSelectedFloorChange,
-      simulatingUidRef,
-      onWaypointPick: (cb) => {
-        const viewerEl = document.getElementById('viewer');
-        if (!viewerEl) return () => { };
+    <Blueprint3DContext.Provider
+      value={{
+        blueprint3d,
+        appState,
+        isRealMode,
+        selectedItem,
+        isLoading,
+        selectedWall,
+        selectedFloor,
+        assetsBaseUrl,
+        currentUID,
+        onStateChange: handleStateChange,
+        onItemSelect: handleItemSelect,
+        onItemUnselect: handleItemUnselect,
+        onLoadingChange: handleLoadingChange,
+        onWallSelect: handleWallSelect,
+        onFloorSelect: handleFloorSelect,
+        onTextureReset: handleTextureReset,
+        onUIDChange: handleUIDChange,
+        createNewPlan: handleCreateNewPlan,
+        loadPlan: handleLoadPlan,
+        onSceneSaved,
+        onEditingModeChange,
+        onSelectedItemChange,
+        onSelectedWallChange,
+        onSelectedFloorChange,
+        simulatingUidRef,
+        onWaypointPick: (cb) => {
+          const viewerEl = document.getElementById('viewer');
+          if (!viewerEl) return () => {};
 
-        let wasMoved = false;
-        const onMouseDown = () => { wasMoved = false; };
-        const onMouseMove = () => { wasMoved = true; };
+          let wasMoved = false;
+          const onMouseDown = () => { wasMoved = false; };
+          const onMouseMove = () => { wasMoved = true; };
 
-        const handler = (e: MouseEvent) => {
-          if (wasMoved) return;
-          if (!blueprint3d?.three) return;
-          const camera = blueprint3d.three.getCamera();
-          const bpScene = blueprint3d.three.getScene();
-          if (!camera || !bpScene) return;
+          const handler = (e: MouseEvent) => {
+            if (wasMoved) return;
+            if (!blueprint3d?.three) return;
 
-          const THREE = (window as any).THREE;
-          if (!THREE) return;
+            const camera = blueprint3d.three.getCamera?.();
+            const bpScene = blueprint3d.three.getScene?.();
+            if (!camera || !bpScene) return;
 
-          const rect = viewerEl.getBoundingClientRect();
-          const mouse = new THREE.Vector2(
-            ((e.clientX - rect.left) / rect.width) * 2 - 1,
-            -((e.clientY - rect.top) / rect.height) * 2 + 1
-          );
+            const THREE = (window as any).THREE;
+            if (!THREE) return;
 
-          const raycaster = new THREE.Raycaster();
-          raycaster.setFromCamera(mouse, camera);
+            const rect = viewerEl.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+              ((e.clientX - rect.left) / rect.width) * 2 - 1,
+              -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
 
-          const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-          const target = new THREE.Vector3();
-          const hit = raycaster.ray.intersectPlane(groundPlane, target);
-          if (hit) cb(target.x, target.z);
-        };
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
 
-        viewerEl.addEventListener('mousedown', onMouseDown);
-        viewerEl.addEventListener('mousemove', onMouseMove);
-        viewerEl.addEventListener('mouseup', handler as EventListener);
-        return () => {
-          viewerEl.removeEventListener('mousedown', onMouseDown);
-          viewerEl.removeEventListener('mousemove', onMouseMove);
-          viewerEl.removeEventListener('mouseup', handler as EventListener);
-        };
-      },
-    }}>
+            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const target = new THREE.Vector3();
+            const hit = raycaster.ray.intersectPlane(groundPlane, target);
+            if (hit) cb(target.x, target.z);
+          };
 
+          viewerEl.addEventListener('mousedown', onMouseDown);
+          viewerEl.addEventListener('mousemove', onMouseMove);
+          viewerEl.addEventListener('mouseup', handler as EventListener);
+
+          return () => {
+            viewerEl.removeEventListener('mousedown', onMouseDown);
+            viewerEl.removeEventListener('mousemove', onMouseMove);
+            viewerEl.removeEventListener('mouseup', handler as EventListener);
+          };
+        },
+      }}
+    >
       <div className="blueprint3d-app">
         <div className="container-fluid">
           <div className="row main-row">
-            {/*
-             * LAYOUT:
-             *   - TASKS mode  → flex row: [viewer flex:1] | [AddTasks panel 340px]
-             *   - Other modes → single column as before
-             */}
             <div
               className={`col-xs-12 main${isSidePanel ? ' tasks-mode' : ''}`}
               style={isSidePanel ? {
@@ -651,20 +655,9 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 flexDirection: 'row',
                 height: '100%',
                 overflow: 'hidden',
-              } : {}}
+                position: 'relative',
+              } : { position: 'relative' }}
             >
-              {/*
-               * ── 3D Viewer ──────────────────────────────────────────────
-               * CRITICAL: Three.js appends its <canvas> directly into #viewer.
-               * React MUST NOT render any children inside #viewer, otherwise
-               * Three.js destroys React's comment-node placeholders and causes:
-               *   "insertBefore: The node before which the new node is to be
-               *    inserted is not a child of this node"
-               *
-               * Solution: #viewer is a self-closing React node (no children).
-               * <Viewer /> lives in #viewer-controls — a sibling div with
-               * position:absolute that visually overlays the whole .main area.
-               */}
               <div
                 id="viewer"
                 className={appState === 'DESIGN' || appState === 'TASKS' || appState === 'TASK_LIST' ? 'active' : ''}
@@ -676,7 +669,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 } : undefined}
               />
 
-              {/* ── React controls overlay (always visible over any panel) ── */}
               <div
                 id="viewer-controls"
                 style={{
@@ -689,7 +681,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 <Viewer />
               </div>
 
-              {/* ── Floorplanner ──────────────────────────────────────────── */}
               <div
                 id="floorplanner"
                 className={appState === 'FLOORPLAN' ? 'active' : ''}
@@ -698,17 +689,14 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 <Floorplanner />
               </div>
 
-              {/* ── Add Items ─────────────────────────────────────────────── */}
               <div id="add-items" className={appState === 'SHOP' ? 'active' : ''}>
                 <AddItems />
               </div>
 
-              {/* ── Add Devices ───────────────────────────────────────────── */}
               <div id="add-devices" className={appState === 'DEVICES' ? 'active' : ''}>
                 <AddDevices />
               </div>
 
-              {/* ── Add Tasks — SIDE PANEL (conditional: only mounted when TASKS state) ── */}
               {isTasksMode && (
                 <div
                   id="add-tasks"
@@ -729,7 +717,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                 </div>
               )}
 
-              {/* ── Task List — SIDE PANEL (conditional: only mounted when TASK_LIST state) ── */}
               {isTaskListMode && (
                 <div
                   id="task-list"
@@ -749,7 +736,6 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
                   <TaskList />
                 </div>
               )}
-
             </div>
           </div>
         </div>

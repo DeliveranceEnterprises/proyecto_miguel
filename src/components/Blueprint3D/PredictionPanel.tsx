@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Box,
   Button,
@@ -8,6 +8,7 @@ import {
   NumberInput,
   NumberInputField,
   NumberInputStepper,
+  Spinner,
   Text,
 } from "@chakra-ui/react";
 
@@ -41,9 +42,11 @@ export default function PredictionPanel({
   const [isPredicting, setIsPredicting] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
 
-  if (!isVisible) return null;
+  const stopPropagation = useCallback((e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  }, []);
 
-  const handlePredict = async () => {
+  const handlePredict = useCallback(async () => {
     if (isPredicting) return;
 
     setIsPredicting(true);
@@ -86,7 +89,9 @@ export default function PredictionPanel({
     } finally {
       setIsPredicting(false);
     }
-  };
+  }, [isPredicting, weeks]);
+
+  if (!isVisible) return null;
 
   return (
     <div
@@ -98,6 +103,9 @@ export default function PredictionPanel({
         transition: "width 0.3s ease",
         pointerEvents: "auto",
       }}
+      onMouseDown={stopPropagation}
+      onMouseUp={stopPropagation}
+      onClick={stopPropagation}
     >
       <div
         style={{
@@ -116,7 +124,10 @@ export default function PredictionPanel({
           px={isOpen ? 4 : 2}
           py={3}
           cursor="pointer"
-          onClick={onToggle}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
         >
           {isOpen ? (
             <>
@@ -166,6 +177,9 @@ export default function PredictionPanel({
               borderTop: "1px solid rgba(167, 139, 250, 0.12)",
               padding: 14,
             }}
+            onMouseDown={stopPropagation}
+            onMouseUp={stopPropagation}
+            onClick={stopPropagation}
           >
             <Box mb={3}>
               <label
@@ -223,28 +237,50 @@ export default function PredictionPanel({
               width="full"
               bg="linear-gradient(135deg, #8B5CF6, #C084FC)"
               color="white"
-              _hover={{ opacity: 0.9, transform: "translateY(-1px)" }}
+              _hover={{ opacity: isPredicting ? 1 : 0.9, transform: isPredicting ? "none" : "translateY(-1px)" }}
               _active={{ transform: "none" }}
-              onClick={handlePredict}
-              isLoading={isPredicting}
-              loadingText="Prediciendo..."
+              onClick={(e) => {
+                e.stopPropagation();
+                void handlePredict();
+              }}
+              isDisabled={isPredicting}
+              translate="no"
             >
-              Predecir
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  minHeight: 20,
+                }}
+              >
+                <Spinner
+                  size="sm"
+                  speed="0.65s"
+                  emptyColor="whiteAlpha.300"
+                  color="white"
+                  style={{
+                    opacity: isPredicting ? 1 : 0,
+                    transition: "opacity 0.2s ease",
+                  }}
+                />
+                <span>Predecir</span>
+              </span>
             </Button>
 
-            {lastMessage && (
-              <Text
-                mt={3}
-                fontSize="xs"
-                color={
-                  lastMessage.toLowerCase().includes("error")
-                    ? "red.300"
-                    : "whiteAlpha.800"
-                }
-              >
-                {lastMessage}
-              </Text>
-            )}
+            <Text
+              mt={3}
+              minHeight="1rem"
+              fontSize="xs"
+              color={
+                lastMessage?.toLowerCase().includes("error")
+                  ? "red.300"
+                  : "whiteAlpha.800"
+              }
+            >
+              {lastMessage ?? ""}
+            </Text>
           </div>
         )}
       </div>
