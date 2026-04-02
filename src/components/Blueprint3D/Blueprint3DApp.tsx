@@ -160,7 +160,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   const rafRef = useRef<number | null>(null);
   const initTimeoutRef = useRef<number | null>(null);
 
-  useDeviceSync(blueprint3d, simulatingUidRef);
+  useDeviceSync(blueprint3d, simulatingUidRef, isRealMode);
 
   useEffect(() => {
     componentMounted.current = true;

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { DevicesService } from '../../client';
+import { fetchDeviceStatus } from '../../utils/deviceStatus';
 import { StatusPublic } from '../../client/types.gen';
 import { Blueprint3DAppRef } from './Blueprint3DApp';
 
@@ -277,10 +277,7 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible, isOpen, onTo
         }
 
         const results = await Promise.allSettled(
-            sceneUids.map((uid) =>
-                DevicesService.getDeviceStatus({ uid })
-                    .then((res: any) => (res as any)?.data ?? res)
-            )
+            sceneUids.map((uid) => fetchDeviceStatus({ uid, isRealMode: true }))
         );
 
         const resolved: StatusPublic[] = results

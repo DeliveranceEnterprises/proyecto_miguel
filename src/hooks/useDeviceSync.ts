@@ -1,12 +1,13 @@
-import { useEffect, useRef } from 'react';
-import { DevicesService } from '../client';
+import { useEffect, useRef, type MutableRefObject } from 'react';
+import { fetchDeviceStatus } from '../utils/deviceStatus';
 
 
 const POLL_INTERVAL = 500;
 
 export function useDeviceSync(
   blueprint3d: any,
-  simulatingUidRef: React.MutableRefObject<string | null>
+  simulatingUidRef: MutableRefObject<string | null>,
+  isRealMode: boolean
 ) {
   const lastKnownRef = useRef<Record<string, { x: number; y: number; status: string }>>({});
 
@@ -30,8 +31,7 @@ export function useDeviceSync(
 
           let statusData: any;
           try {
-            const res = await DevicesService.getDeviceStatus({ uid });
-            statusData = res.data ?? res;
+            statusData = await fetchDeviceStatus({ uid, isRealMode });
           } catch {
             return;
           }
@@ -54,5 +54,5 @@ export function useDeviceSync(
     const interval = setInterval(poll, POLL_INTERVAL);
     return () => clearInterval(interval);
 
-  }, [blueprint3d, simulatingUidRef]);
+  }, [blueprint3d, simulatingUidRef, isRealMode]);
 }
