@@ -2,9 +2,24 @@ import { DevicesService } from '../client';
 import { OpenAPI } from '../client/core/OpenAPI';
 
 const LIVE_STATUS_MODELS = new Set(['Real-robot', 'Deliverance-robot']);
+const LIVE_STATUS_SOURCES = new Set(['deliverance']);
 
 export function isLiveStatusModel(model?: string | null): boolean {
   return LIVE_STATUS_MODELS.has(String(model ?? '').trim());
+}
+
+export function isLiveStatusDevice(device?: any): boolean {
+  if (!device) return false;
+
+  const integrationSource = String(device.integration_source ?? '').trim().toLowerCase();
+  const remoteUid = String(device.remote_uid ?? '').trim();
+
+  return Boolean(
+    device.live_status_enabled === true ||
+    LIVE_STATUS_SOURCES.has(integrationSource) ||
+    remoteUid ||
+    isLiveStatusModel(device.model)
+  );
 }
 
 export async function fetchDeviceStatus(params: {

@@ -461,17 +461,32 @@ function Site() {
           if (realModeScene) {
             handleSceneSelection(realModeScene.uid);
           } else {
-            // Need to create it
+            // Create the Real Mode Scene using the currently selected simulation
+            // scene as the base layout whenever possible. Robot items are removed
+            // so only the environment is copied into Real Mode.
+            let sourceFloorplan: any = { corners: {}, walls: [] };
+            let sourceItems: any[] = [];
+            const sourceSceneId = prevSimulationSceneRef.current || selectedScene;
+
+            if (sourceSceneId) {
+              try {
+                const sourceScene = await ScenesService.readScene({ sceneId: sourceSceneId });
+                sourceFloorplan = sourceScene.floorplan || sourceFloorplan;
+                sourceItems = (sourceScene.items || []).filter((item: any) => {
+                  const meta = item?.metadata ?? item;
+                  return !meta?.device_uid && !meta?.deviceId;
+                });
+              } catch (copyError) {
+                console.warn('Could not clone the current simulation scene into Real Mode:', copyError);
+              }
+            }
+
             const newScene = await ScenesService.createScene({
               requestBody: {
                 label: "Real Mode Scene",
                 organization_id: orgId,
-                // Empty default floorplan 
-                floorplan: {
-                  corners: {},
-                  walls: []
-                },
-                items: [],
+                floorplan: sourceFloorplan,
+                items: sourceItems,
               }
             });
 

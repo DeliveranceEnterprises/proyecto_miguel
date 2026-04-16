@@ -4,7 +4,7 @@ import { useBlueprint3D } from './Blueprint3DApp';
 import { DevicesService, OrganizationsService } from '../../client';
 import type { DevicePublic } from '../../client';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
-import { isLiveStatusModel } from '../../utils/deviceStatus';
+import { isLiveStatusDevice } from '../../utils/deviceStatus';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GLB model map — SOURCE OF TRUTH for which devices have a 3D model
@@ -80,7 +80,7 @@ function findMapKey(device: DevicePublic): string | undefined {
 
 /** Returns true if device is a "real" (physical) robot */
 function isRealDevice(device: DevicePublic): boolean {
-  return isLiveStatusModel(device.model);
+  return isLiveStatusDevice(device as any);
 }
 
 function getOccupiedUidsFromCurrentScene(blueprint3d: any): Set<string> {
@@ -234,7 +234,7 @@ const AddDevices: React.FC = () => {
 
         if (isRealMode) {
           fetchedDevices = fetchedDevices.filter(d =>
-            isLiveStatusModel(d.model) && d.enabled === true
+            isLiveStatusDevice(d as any) && d.enabled === true
           );
         }
 
