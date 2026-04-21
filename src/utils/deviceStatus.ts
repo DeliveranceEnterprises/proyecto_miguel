@@ -25,8 +25,9 @@ export function isLiveStatusDevice(device?: any): boolean {
 export async function fetchDeviceStatus(params: {
   uid: string;
   isRealMode: boolean;
+  forceRefresh?: boolean;
 }): Promise<any> {
-  const { uid, isRealMode } = params;
+  const { uid, isRealMode, forceRefresh = false } = params;
 
   if (!isRealMode) {
     const localRes = await DevicesService.getDeviceStatus({ uid });
@@ -35,7 +36,8 @@ export async function fetchDeviceStatus(params: {
 
   const token = localStorage.getItem('access_token') || '';
   const base = OpenAPI.BASE || '';
-  const url = `${base}/api/v1/devices/${encodeURIComponent(uid)}/status/live`;
+  const qs = forceRefresh ? '?force_refresh=true' : '';
+  const url = `${base}/api/v1/devices/${encodeURIComponent(uid)}/status/live${qs}`;
 
   try {
     const response = await fetch(url, {

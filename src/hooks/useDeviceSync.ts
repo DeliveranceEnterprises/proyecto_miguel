@@ -1,8 +1,17 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import { fetchDeviceStatus } from '../utils/deviceStatus';
 
-
 const POLL_INTERVAL = 500;
+
+function getItemDeviceUid(item: any): string {
+  return String(
+    item?.device_uid ??
+    item?.metadata?.device_uid ??
+    item?.metadata?.deviceId ??
+    item?.deviceId ??
+    ''
+  ).trim();
+}
 
 export function useDeviceSync(
   blueprint3d: any,
@@ -19,25 +28,31 @@ export function useDeviceSync(
       if (!scene) return;
 
       const items: any[] = scene.getItems?.() ?? [];
-      const deviceItems = items.filter(item => item.device_uid);
+      const deviceItems = items.filter((item) => Boolean(getItemDeviceUid(item)));
       if (deviceItems.length === 0) return;
 
       await Promise.allSettled(
         deviceItems.map(async (item) => {
-          const uid: string = item.device_uid;
+          const uid = getItemDeviceUid(item);
+          if (!uid) return;
 
-          // No mover el robot que está siendo simulado
           if (simulatingUidRef.current === uid) return;
 
           let statusData: any;
           try {
-            statusData = await fetchDeviceStatus({ uid, isRealMode });
+            statusData = await fetchDeviceStatus({
+              uid,
+              isRealMode,
+              forceRefresh: isRealMode,
+            });
           } catch {
             return;
           }
 
-          const newX: number = statusData?.coordinates_x ?? 0;
-          const newY: number = statusData?.coordinates_y ?? 0;
+          if (statusData?.coordinates_x == null || statusData?.coordinates_y == null) return;
+
+          const newX: number = Number(statusData.coordinates_x);
+          const newY: number = Number(statusData.coordinates_y);
           const newStatus: string = statusData?.status ?? '';
 
           const last = lastKnownRef.current[uid];
@@ -53,6 +68,5 @@ export function useDeviceSync(
 
     const interval = setInterval(poll, POLL_INTERVAL);
     return () => clearInterval(interval);
-
   }, [blueprint3d, simulatingUidRef, isRealMode]);
 }

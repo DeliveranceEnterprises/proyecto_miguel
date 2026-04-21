@@ -72,6 +72,7 @@ const itemCategories = [
       { name: 'pudu_bellabot', image: 'plan3d/models/thumbnails/pudu_bellabot.png', model: 'plan3d/models/js/pudu_bellabot.glb', type: 1 },
       { name: 'pudu_ketty', image: 'plan3d/models/thumbnails/pudu_ketty.png', model: 'plan3d/models/js/pudu_ketty.glb', type: 1 },
       { name: 'viggo_sc50', image: 'plan3d/models/thumbnails/viggo_sc50.png', model: 'plan3d/models/js/viggo_sc50.glb', type: 1 },
+      { name: 'Cargador', image: 'plan3d/models/thumbnails/robot.png', model: 'plan3d/models/js/baul.glb', type: 1 },
     ]
   }
 
@@ -85,13 +86,25 @@ const AddItems: React.FC = () => {
       try {
 
         const isGLB = item.model.toLowerCase().endsWith('.glb');
+        const isCharger = item.name === 'Cargador';
+        const anchorUid =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `charger-${Date.now()}`;
+
         // Add item to the scene with metadata
         const metadata = {
           itemName: item.name,
           resizable: true,
           modelUrl: item.model,
           itemType: item.type,
-          format: isGLB ? 'glb' : 'json'
+          format: isGLB ? 'glb' : 'json',
+          ...(isCharger
+            ? {
+                anchor_uid: anchorUid,
+                anchor_type: 'charger',
+              }
+            : {}),
         };
 
         blueprint3d.model.scene.addItem(item.type, item.model, metadata);
