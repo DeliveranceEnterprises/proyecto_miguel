@@ -65,6 +65,10 @@ interface Blueprint3DInstance {
     modeResetCallbacks?: { add: (callback: Function) => void };
     mouseX: number;
     mouseY: number;
+    originX?: number;
+    originY?: number;
+    cmPerPixel?: number;
+    pixelsPerCm?: number;
   };
 }
 
@@ -112,6 +116,7 @@ export interface Blueprint3DAppProps {
   onSelectedWallChange?: (wall: any) => void;
   onSelectedFloorChange?: (floor: any) => void;
   isRealMode?: boolean;
+  pauseDeviceSync?: boolean;
 }
 
 export interface Blueprint3DAppRef {
@@ -120,6 +125,8 @@ export interface Blueprint3DAppRef {
   clearSelections: () => void;
   setControllerEnabled: (enabled: boolean) => void;
   getSceneDeviceUids: () => string[];
+  setView: (state: AppState) => void;
+  getBlueprint3D: () => Blueprint3DInstance | null;
 }
 
 export const useBlueprint3D = () => {
@@ -141,6 +148,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
   onSelectedWallChange,
   onSelectedFloorChange,
   isRealMode = false,
+  pauseDeviceSync = false,
 }, ref) => {
   const [appState, setAppState] = useState<AppState>('DESIGN');
   const [blueprint3d, setBlueprint3d] = useState<Blueprint3DInstance | null>(null);
@@ -156,11 +164,12 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
   const scriptsLoadedRef = useRef(false);
   const bp3dInstanceRef = useRef<Blueprint3DInstance | null>(null);
+  const controllerEnabledRef = useRef(false);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const rafRef = useRef<number | null>(null);
   const initTimeoutRef = useRef<number | null>(null);
 
-  useDeviceSync(blueprint3d, simulatingUidRef, isRealMode);
+  useDeviceSync(blueprint3d, simulatingUidRef, isRealMode, pauseDeviceSync);
 
   useEffect(() => {
     componentMounted.current = true;
@@ -368,7 +377,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
 
         const controller = bp3d.three?.getController?.();
         if (controller) {
-          controller.enabled = false;
+          controller.enabled = controllerEnabledRef.current;
         }
 
         viewerElement.style.outline = 'none';
@@ -408,6 +417,14 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
       bp3dInstanceRef.current = null;
     };
   }, [isInitialized, assetsBaseUrl]);
+
+  useEffect(() => {
+    const controller = blueprint3d?.three?.getController?.();
+    if (controller) {
+      controller.enabled = controllerEnabledRef.current;
+    }
+  }, [blueprint3d, appState, currentUID]);
+
 
   const handleStateChange = (newState: AppState) => {
     setAppState(newState);
@@ -553,6 +570,7 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     createNewPlan: handleCreateNewPlan,
     clearSelections: handleClearSelections,
     setControllerEnabled: (enabled: boolean) => {
+      controllerEnabledRef.current = enabled;
       const controller = blueprint3d?.three?.getController?.();
       if (controller) {
         controller.enabled = enabled;
@@ -565,6 +583,10 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
         .filter((item: any) => !!item.device_uid)
         .map((item: any) => item.device_uid as string);
     },
+    setView: (state: AppState) => {
+      handleStateChange(state);
+    },
+    getBlueprint3D: () => blueprint3d,
   }));
 
   const isTasksMode = appState === 'TASKS';

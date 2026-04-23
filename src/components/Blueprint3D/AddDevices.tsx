@@ -22,7 +22,7 @@ const DEVICE_MODEL_MAP: Record<string, { model: string; thumbnail: string; type:
     thumbnail: '/assets/images/devices/allybot.png',
     type: 1,
     label: 'Allybot',
-    defaultHeight: 120,
+    defaultHeight: 90,
   },
   pandabot: {
     model: '/assets/glb/devices/pandabot.glb',

@@ -12,6 +12,11 @@ interface RobotInfoPanelProps {
     onToggle: () => void;
 }
 
+interface RobotPanelStatus extends StatusPublic {
+    real_coordinates_x?: number | null;
+    real_coordinates_y?: number | null;
+}
+
 function getBatteryColor(level: number): string {
     if (level <= 10) return '#FF4560';
     if (level <= 25) return '#FF9F43';
@@ -116,11 +121,13 @@ function PulsingDot({ color }: { color: string }) {
     );
 }
 
-function RobotCard({ status }: { status: StatusPublic }) {
+function RobotCard({ status }: { status: RobotPanelStatus }) {
     const hasTask = !!status.task_id;
     // If a task is assigned (task_id set), ALWAYS show as Running regardless of what the backend says
     const displayStatus = hasTask ? 'Running' : (status.status || 'Unknown');
     const statusCfg = getStatusConfig(displayStatus);
+    const displayX = status.real_coordinates_x ?? status.coordinates_x;
+    const displayY = status.real_coordinates_y ?? status.coordinates_y;
 
     const [hovered, setHovered] = useState(false);
 
@@ -192,12 +199,12 @@ function RobotCard({ status }: { status: StatusPublic }) {
             {/* Position */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                 <div style={{ flex: 1 }}>
-                    <label style={styles.label}>X</label>
-                    <span style={styles.monoValue}>{formatCoord(status.coordinates_x)}</span>
+                    <label style={styles.label}>X real</label>
+                    <span style={styles.monoValue}>{formatCoord(displayX)}</span>
                 </div>
                 <div style={{ flex: 1 }}>
-                    <label style={styles.label}>Y</label>
-                    <span style={styles.monoValue}>{formatCoord(status.coordinates_y)}</span>
+                    <label style={styles.label}>Y real</label>
+                    <span style={styles.monoValue}>{formatCoord(displayY)}</span>
                 </div>
             </div>
 
@@ -264,7 +271,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 export default function RobotInfoPanel({ blueprint3DRef, isVisible, isOpen, onToggle }: RobotInfoPanelProps) {
-    const [statuses, setStatuses] = useState<StatusPublic[]>([]);
+    const [statuses, setStatuses] = useState<RobotPanelStatus[]>([]);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -280,8 +287,8 @@ export default function RobotInfoPanel({ blueprint3DRef, isVisible, isOpen, onTo
             sceneUids.map((uid) => fetchDeviceStatus({ uid, isRealMode: true }))
         );
 
-        const resolved: StatusPublic[] = results
-            .filter((r): r is PromiseFulfilledResult<StatusPublic> => r.status === 'fulfilled')
+        const resolved: RobotPanelStatus[] = results
+            .filter((r): r is PromiseFulfilledResult<RobotPanelStatus> => r.status === 'fulfilled')
             .map((r) => r.value)
             .filter((s) => s && s.uid);
 

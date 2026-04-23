@@ -19,7 +19,7 @@ import {
   FormControl,
   FormLabel,
   Divider,
-  IconButton,
+  IconButton
 } from "@chakra-ui/react";
 
 import { createFileRoute } from "@tanstack/react-router";
@@ -32,7 +32,7 @@ import { useOrganizationContext } from "../../hooks/useOrganizationContext";
 import { createDefaultFloorplan } from "../../components/Blueprint3D/utils";
 import { OrganizationsService, ScenesService } from "../../client";
 import useCustomToast from "../../hooks/useCustomToast";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type SyntheticEvent } from "react";
 import { FiTrash2, FiX } from "react-icons/fi";
 
 export const Route = createFileRoute("/_layout/site")({
@@ -41,12 +41,178 @@ export const Route = createFileRoute("/_layout/site")({
 
 type RealModePanel = "robots" | "prediction" | null;
 
-// Item Editing Panel Component - receives selectedItem and onClose as props to avoid context issues
-function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClose: () => void }) {
-  const [itemDimensions, setItemDimensions] = useState({ width: 0, height: 0, depth: 0 });
-  // Guardamos las dimensiones "base" para calcular el ratio al hacer resize
+type ChargerEditorValues = {
+  sceneX: number;
+  sceneZ: number;
+  rotationDeg: number;
+  realOriginX: number;
+  realOriginY: number;
+  realRotationOffsetRad: number;
+  xScale: number;
+  yScale: number;
+  xOffset: number;
+  yOffset: number;
+};
+
+type ChargerEditorFormValues = {
+  sceneX: string;
+  sceneZ: string;
+  rotationDeg: string;
+  realOriginX: string;
+  realOriginY: string;
+  realRotationOffsetRad: string;
+  xScale: string;
+  yScale: string;
+  xOffset: string;
+  yOffset: string;
+};
+
+type ItemDimensionsFormValues = {
+  width: string;
+  height: string;
+  depth: string;
+};
+
+const roundTo = (value: number, decimals = 3) => Number(Number(value || 0).toFixed(decimals));
+const radToDeg = (rad: number) => rad * (180 / Math.PI);
+const degToRad = (deg: number) => deg * (Math.PI / 180);
+
+const isChargerItem = (item: any) => {
+  if (!item) return false;
+  const metadata = item.metadata || {};
+  return metadata.anchor_type === "charger" || item.anchor_type === "charger" || metadata.itemName === "Cargador";
+};
+
+const getItemMetadataNumber = (item: any, key: string, fallback = 0) => {
+  const metadata = item?.metadata;
+  const raw = metadata && typeof metadata === "object" ? metadata[key] : undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const ensureItemMetadata = (item: any) => {
+  if (!item.metadata || typeof item.metadata !== "object") {
+    item.metadata = {};
+  }
+  return item.metadata;
+};
+
+const markItemDirty = (item: any) => {
+  if (!item) return;
+  if (item.scene) {
+    item.scene.needsUpdate = true;
+  }
+  if (typeof item.changed === "function") {
+    item.changed();
+  }
+};
+
+const getChargerEditorValues = (item: any): ChargerEditorValues => ({
+  sceneX: roundTo(Number(item?.position?.x) || 0),
+  sceneZ: roundTo(Number(item?.position?.z) || 0),
+  rotationDeg: roundTo(radToDeg(Number(item?.rotation?.y) || 0), 2),
+  realOriginX: roundTo(getItemMetadataNumber(item, "real_origin_x", 0)),
+  realOriginY: roundTo(getItemMetadataNumber(item, "real_origin_y", 0)),
+  realRotationOffsetRad: roundTo(getItemMetadataNumber(item, "real_rotation_offset_rad", 0), 4),
+  xScale: roundTo(getItemMetadataNumber(item, "x_scale", 100)),
+  yScale: roundTo(getItemMetadataNumber(item, "y_scale", 100)),
+  xOffset: roundTo(getItemMetadataNumber(item, "x_offset", 0)),
+  yOffset: roundTo(getItemMetadataNumber(item, "y_offset", 0)),
+});
+
+const chargerValuesToForm = (values: ChargerEditorValues): ChargerEditorFormValues => ({
+  sceneX: values.sceneX.toString(),
+  sceneZ: values.sceneZ.toString(),
+  rotationDeg: values.rotationDeg.toString(),
+  realOriginX: values.realOriginX.toString(),
+  realOriginY: values.realOriginY.toString(),
+  realRotationOffsetRad: values.realRotationOffsetRad.toString(),
+  xScale: values.xScale.toString(),
+  yScale: values.yScale.toString(),
+  xOffset: values.xOffset.toString(),
+  yOffset: values.yOffset.toString(),
+});
+
+const chargerFormToValues = (form: ChargerEditorFormValues): ChargerEditorValues => ({
+  sceneX: Number(form.sceneX) || 0,
+  sceneZ: Number(form.sceneZ) || 0,
+  rotationDeg: Number(form.rotationDeg) || 0,
+  realOriginX: Number(form.realOriginX) || 0,
+  realOriginY: Number(form.realOriginY) || 0,
+  realRotationOffsetRad: Number(form.realRotationOffsetRad) || 0,
+  xScale: Number(form.xScale) || 0,
+  yScale: Number(form.yScale) || 0,
+  xOffset: Number(form.xOffset) || 0,
+  yOffset: Number(form.yOffset) || 0,
+});
+
+const applyChargerEditorValues = (item: any, values: ChargerEditorValues) => {
+  if (!item) return;
+  const metadata = ensureItemMetadata(item);
+
+  item.position.x = Number(values.sceneX) || 0;
+  item.position.z = Number(values.sceneZ) || 0;
+  item.rotation.y = degToRad(Number(values.rotationDeg) || 0);
+
+  metadata.real_origin_x = Number(values.realOriginX) || 0;
+  metadata.real_origin_y = Number(values.realOriginY) || 0;
+  metadata.real_rotation_offset_rad = Number(values.realRotationOffsetRad) || 0;
+  metadata.x_scale = Number(values.xScale) || 0;
+  metadata.y_scale = Number(values.yScale) || 0;
+  metadata.x_offset = Number(values.xOffset) || 0;
+  metadata.y_offset = Number(values.yOffset) || 0;
+
+  if (!metadata.anchor_uid) {
+    metadata.anchor_uid = item.anchor_uid || `charger-${Date.now()}`;
+  }
+  metadata.anchor_type = "charger";
+  item.anchor_uid = metadata.anchor_uid;
+  item.anchor_type = "charger";
+  item.linked_robot_uid = metadata.linked_robot_uid ?? item.linked_robot_uid ?? null;
+
+  markItemDirty(item);
+};
+
+function EditorOverlay({ children }: { children: any }) {
+  return (
+    <Box
+      position="absolute"
+      inset={0}
+      zIndex={40}
+      pointerEvents="none"
+      overflow="hidden"
+    >
+      {children}
+    </Box>
+  );
+}
+
+function ItemEditingPanel({
+  selectedItem,
+  onClose,
+  onStartFloorplanPlacement,
+  isFloorplanPlacementActive,
+  refreshKey,
+  onItemUpdated
+}: {
+  selectedItem: any;
+  onClose: () => void;
+  onStartFloorplanPlacement?: (item: any) => void;
+  isFloorplanPlacementActive?: boolean;
+  refreshKey?: number;
+  onItemUpdated?: () => void;
+}) {
+  const [itemDimensions, setItemDimensions] = useState<ItemDimensionsFormValues>({
+    width: "0.00",
+    height: "0.00",
+    depth: "0.00",
+  });
+
   const baseDimensionsRef = useRef({ width: 0, height: 0, depth: 0 });
   const [isFixed, setIsFixed] = useState(false);
+  const [chargerValues, setChargerValues] = useState<ChargerEditorFormValues>(() =>
+    chargerValuesToForm(getChargerEditorValues(selectedItem))
+  );
 
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
@@ -54,59 +220,87 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
 
   useEffect(() => {
     if (selectedItem) {
-      // Convertir de cm (Blueprint3D) a metros
       const cmToM = (cm: number) => cm / 100;
 
-      // Mantenemos 2 decimales para precisión en metros
       const dims = {
-        width: Number(cmToM(selectedItem.getWidth()).toFixed(2)),
-        height: Number(cmToM(selectedItem.getHeight()).toFixed(2)),
-        depth: Number(cmToM(selectedItem.getDepth()).toFixed(2)),
+        width: cmToM(selectedItem.getWidth()).toFixed(2),
+        height: cmToM(selectedItem.getHeight()).toFixed(2),
+        depth: cmToM(selectedItem.getDepth()).toFixed(2),
       };
+
       setItemDimensions(dims);
-      baseDimensionsRef.current = { ...dims }; // <-- guardamos la base
+      baseDimensionsRef.current = {
+        width: Number(dims.width),
+        height: Number(dims.height),
+        depth: Number(dims.depth),
+      };
+
       setIsFixed(selectedItem.fixed || false);
+
+      if (isChargerItem(selectedItem)) {
+        setChargerValues(chargerValuesToForm(getChargerEditorValues(selectedItem)));
+      }
     }
-  }, [selectedItem]);
+  }, [selectedItem, refreshKey]);
 
   const handleDeleteItem = () => {
     if (selectedItem) selectedItem.remove();
   };
 
-  // Solo actualiza el estado local, NO llama a selectedItem.resize todavía
-  const handleDimensionChange = (dimension: 'width' | 'height' | 'depth', value: number) => {
-    setItemDimensions(prev => ({ ...prev, [dimension]: value }));
+  const stopScenePointerEvent = (event: React.SyntheticEvent) => {
+    event.stopPropagation();
+    const nativeEvent = event.nativeEvent as Event & {
+      stopImmediatePropagation?: () => void;
+    };
+    nativeEvent.stopImmediatePropagation?.();
   };
 
-  // Al pulsar Resize: detecta qué dimensión cambió, aplica el ratio a las demás
+  const handleDimensionChange = (
+    dimension: keyof ItemDimensionsFormValues,
+    value: string
+  ) => {
+    setItemDimensions((prev) => ({ ...prev, [dimension]: value }));
+  };
+
   const handleResize = () => {
     if (!selectedItem) return;
 
     const base = baseDimensionsRef.current;
-    const current = itemDimensions;
+    const current = {
+      width: Number(itemDimensions.width),
+      height: Number(itemDimensions.height),
+      depth: Number(itemDimensions.depth),
+    };
 
-    // Detectar qué dimensión cambió más (en ratio) respecto a la base
+    if (
+      !Number.isFinite(current.width) ||
+      !Number.isFinite(current.height) ||
+      !Number.isFinite(current.depth) ||
+      current.width <= 0 ||
+      current.height <= 0 ||
+      current.depth <= 0
+    ) {
+      return;
+    }
+
     const ratios = {
       width: base.width > 0 ? current.width / base.width : 1,
       height: base.height > 0 ? current.height / base.height : 1,
       depth: base.depth > 0 ? current.depth / base.depth : 1,
     };
 
-    // La dimensión con mayor cambio relativo es la "driver"
-    const changedDim = (Object.keys(ratios) as Array<'width' | 'height' | 'depth'>).reduce(
-      (a, b) => Math.abs(ratios[a] - 1) >= Math.abs(ratios[b] - 1) ? a : b
+    const changedDim = (Object.keys(ratios) as Array<"width" | "height" | "depth">).reduce(
+      (a, b) => (Math.abs(ratios[a] - 1) >= Math.abs(ratios[b] - 1) ? a : b)
     );
 
     const ratio = ratios[changedDim];
 
-    // Calcular nuevas dimensiones proporcionales (manteniendo 2 decimales)
     const newDims = {
       width: Number((base.width * ratio).toFixed(2)),
       height: Number((base.height * ratio).toFixed(2)),
       depth: Number((base.depth * ratio).toFixed(2)),
     };
 
-    // Convertir de metros a cm para Blueprint3D
     const mToCm = (m: number) => m * 100;
     selectedItem.resize(
       mToCm(newDims.height),
@@ -114,136 +308,245 @@ function ItemEditingPanel({ selectedItem, onClose }: { selectedItem: any, onClos
       mToCm(newDims.depth),
     );
 
-    setItemDimensions(newDims);
-    baseDimensionsRef.current = { ...newDims }; // actualizar la base para el próximo resize
+    setItemDimensions({
+      width: newDims.width.toFixed(2),
+      height: newDims.height.toFixed(2),
+      depth: newDims.depth.toFixed(2),
+    });
+
+    baseDimensionsRef.current = { ...newDims };
+    onItemUpdated?.();
   };
 
   const handleFixedChange = (checked: boolean) => {
     if (selectedItem) {
       selectedItem.setFixed(checked);
       setIsFixed(checked);
+      onItemUpdated?.();
     }
+  };
+
+  const handleChargerValueChange = (
+    field: keyof ChargerEditorFormValues,
+    value: string
+  ) => {
+    setChargerValues((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleApplyChargerValues = () => {
+    if (!selectedItem || !isChargerItem(selectedItem)) return;
+    applyChargerEditorValues(selectedItem, chargerFormToValues(chargerValues));
+    setChargerValues(chargerValuesToForm(getChargerEditorValues(selectedItem)));
+    onItemUpdated?.();
+    onClose();
   };
 
   if (!selectedItem) return null;
 
   return (
-    <Card
-      position="absolute"
-      top={4}
-      right={4}
-      width="280px"
-      bg={cardBg}
-      color={textColor}
-      borderColor={borderColor}
-      borderWidth="1px"
-      boxShadow="lg"
-      zIndex={20}
-    >
-      <CardBody p={4}>
-        <VStack spacing={4} align="stretch">
-          <Box>
-            <Flex justify="space-between" align="center" mb={2}>
-              <Text fontSize="lg" fontWeight="bold">
-                {selectedItem.metadata?.itemName || 'Selected Item'}
-              </Text>
-              <IconButton
-                aria-label="Close item panel"
-                icon={<FiX />}
-                size="sm"
-                variant="ghost"
-                onClick={onClose}
-              />
-            </Flex>
-            <Divider />
-          </Box>
-
-          <VStack spacing={3} align="stretch">
-            <Text fontSize="sm" fontWeight="medium" color="gray.500">
-              Dimensions (meters)
-            </Text>
-
-            {(['width', 'height', 'depth'] as const).map((dim) => (
-              <FormControl key={dim}>
-                <FormLabel fontSize="sm" textTransform="capitalize">{dim}</FormLabel>
-                <NumberInput
+    <EditorOverlay>
+      <Card
+        position="absolute"
+        top={{ base: "18px", md: "18px" }}
+        right={{ base: "16px", md: "16px" }}
+        width={{ base: "300px", md: "340px" }}
+        maxH="calc(100% - 36px)"
+        display="flex"
+        flexDirection="column"
+        bg={cardBg}
+        color={textColor}
+        borderColor={borderColor}
+        borderWidth="1px"
+        boxShadow="2xl"
+        zIndex={41}
+        pointerEvents="auto"
+        onMouseDown={stopScenePointerEvent}
+        onPointerDown={stopScenePointerEvent}
+        onTouchStart={stopScenePointerEvent}
+      >
+        <CardBody p={4} overflowY="auto" flex="1">
+          <VStack spacing={4} align="stretch">
+            <Box>
+              <Flex justify="space-between" align="center" mb={2}>
+                <Text fontSize="lg" fontWeight="bold">
+                  {selectedItem.metadata?.itemName || "Selected Item"}
+                </Text>
+                <IconButton
+                  aria-label="Close item panel"
+                  icon={<FiX />}
                   size="sm"
-                  value={itemDimensions[dim]}
-                  onChange={(_, value) => handleDimensionChange(dim, value || 0)}
-                  min={0.01}
-                  step={0.1} // Permite cambiar de 10cm en 10cm al dar a las flechas
-                  precision={2} // Fuerzo a que se muestren 2 decimales
-                >
-                  <NumberInputField />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-              </FormControl>
-            ))}
-          </VStack>
+                  variant="ghost"
+                  onClick={onClose}
+                />
+              </Flex>
+              <Divider />
+            </Box>
 
-          {/* Botón Resize proporcional */}
-          <Button
-            colorScheme="blue"
-            variant="solid"
-            size="sm"
-            onClick={handleResize}
-          >
-            Resize (proportional)
-          </Button>
+            <VStack spacing={3} align="stretch">
+              <Text fontSize="sm" fontWeight="medium" color="gray.500">
+                Dimensions (meters)
+              </Text>
 
-          <FormControl display="flex" alignItems="center">
-            <FormLabel fontSize="sm" mb={0}>Fixed Position</FormLabel>
-            <Switch
-              isChecked={isFixed}
-              onChange={(e) => handleFixedChange(e.target.checked)}
+              {(["width", "height", "depth"] as const).map((dim) => (
+                <FormControl key={dim}>
+                  <FormLabel fontSize="sm" textTransform="capitalize">
+                    {dim}
+                  </FormLabel>
+                  <NumberInput
+                    size="sm"
+                    value={itemDimensions[dim]}
+                    onChange={(valueAsString) => {
+                      handleDimensionChange(dim, valueAsString);
+                    }}
+                    min={0.01}
+                    step={0.1}
+                    precision={2}
+                  >
+                    <NumberInputField />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                </FormControl>
+              ))}
+            </VStack>
+
+            <Button
               colorScheme="blue"
-            />
-          </FormControl>
+              variant="solid"
+              size="sm"
+              onClick={handleResize}
+            >
+              Resize (proportional)
+            </Button>
 
-          <Button
-            leftIcon={<FiTrash2 />}
-            colorScheme="red"
-            variant="outline"
-            size="sm"
-            onClick={handleDeleteItem}
-          >
-            Delete Item
-          </Button>
-        </VStack>
-      </CardBody>
-    </Card>
+            <FormControl display="flex" alignItems="center">
+              <FormLabel fontSize="sm" mb={0}>
+                Fixed Position
+              </FormLabel>
+              <Switch
+                isChecked={isFixed}
+                onChange={(e) => handleFixedChange(e.target.checked)}
+                colorScheme="blue"
+              />
+            </FormControl>
+
+            {isChargerItem(selectedItem) && (
+              <VStack spacing={3} align="stretch">
+                <Divider />
+                <Text fontSize="sm" fontWeight="medium" color="gray.500">
+                  Charger placement & calibration
+                </Text>
+
+                {([
+                  ["sceneX", "X escena", 0.1, 3],
+                  ["sceneZ", "Z escena", 0.1, 3],
+                  ["rotationDeg", "Rotación (grados)", 0.1, 2],
+                  ["realOriginX", "Origen real X", 0.01, 3],
+                  ["realOriginY", "Origen real Y", 0.01, 3],
+                  ["realRotationOffsetRad", "Offset angular real (rad)", 0.001, 4],
+                  ["xScale", "Escala X", 0.1, 3],
+                  ["yScale", "Escala Y", 0.1, 3],
+                  ["xOffset", "Offset X", 0.01, 3],
+                  ["yOffset", "Offset Y", 0.01, 3],
+                ] as const).map(([field, label, step, precision]) => (
+                  <FormControl key={field}>
+                    <FormLabel fontSize="sm">{label}</FormLabel>
+                    <NumberInput
+                      size="sm"
+                      value={chargerValues[field]}
+                      onChange={(valueAsString) => {
+                        handleChargerValueChange(field, valueAsString);
+                      }}
+                      step={step}
+                      precision={precision}
+                    >
+                      <NumberInputField />
+                      <NumberInputStepper>
+                        <NumberIncrementStepper />
+                        <NumberDecrementStepper />
+                      </NumberInputStepper>
+                    </NumberInput>
+                  </FormControl>
+                ))}
+
+                <Button
+                  colorScheme="blue"
+                  variant="solid"
+                  size="sm"
+                  onClick={handleApplyChargerValues}
+                >
+                  Aplicar ajustes del cargador
+                </Button>
+
+                <Button
+                  colorScheme={isFloorplanPlacementActive ? "orange" : "teal"}
+                  variant={isFloorplanPlacementActive ? "solid" : "outline"}
+                  size="sm"
+                  onClick={() => onStartFloorplanPlacement?.(selectedItem)}
+                >
+                  {isFloorplanPlacementActive ? "Esperando click en floorplan…" : "Colocar en floorplan"}
+                </Button>
+              </VStack>
+            )}
+
+            <Button
+              leftIcon={<FiTrash2 />}
+              colorScheme="red"
+              variant="outline"
+              size="sm"
+              onClick={handleDeleteItem}
+            >
+              Delete Item
+            </Button>
+          </VStack>
+        </CardBody>
+      </Card>
+    </EditorOverlay>
   );
 }
 
-// Wall/Floor Editing Panel Component - receives selectedWall/selectedFloor as props
-function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selectedWall: any, selectedFloor: any, onClose: () => void }) {
+function WallFloorEditingPanel({
+  selectedWall,
+  selectedFloor,
+  onClose
+}: {
+  selectedWall: any;
+  selectedFloor: any;
+  onClose: () => void;
+}) {
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
   const borderColor = useColorModeValue("gray.200", "gray.600");
 
+  const stopScenePointerEvent = (event: React.SyntheticEvent) => {
+    event.stopPropagation();
+    const nativeEvent = event.nativeEvent as Event & {
+      stopImmediatePropagation?: () => void;
+    };
+    nativeEvent.stopImmediatePropagation?.();
+  };
 
-
-  // Available textures with proper parameters (url, stretch, scale)
   const wallTextures = [
-    { name: 'Default Wall', url: '/plan3d/rooms/textures/wallmap.png', thumbnail: '/plan3d/rooms/textures/wallmap.png', stretch: true, scale: 0 },
-    { name: 'Yellow Wall', url: '/plan3d/rooms/textures/wallmap_yellow.png', thumbnail: '/plan3d/rooms/thumbnails/thumbnail_wallmap_yellow.png', stretch: true, scale: 0 },
-    { name: 'Light Brick', url: '/plan3d/rooms/textures/light_brick.jpg', thumbnail: '/plan3d/rooms/thumbnails/thumbnail_light_brick.jpg', stretch: false, scale: 100 },
-    { name: 'Light Wood', url: '/plan3d/rooms/textures/light_fine_wood.jpg', thumbnail: '/plan3d/rooms/thumbnails/thumbnail_light_fine_wood.jpg', stretch: false, scale: 300 },
+    { name: "Default Wall", url: "/plan3d/rooms/textures/wallmap.png", thumbnail: "/plan3d/rooms/textures/wallmap.png", stretch: true, scale: 0 },
+    { name: "Yellow Wall", url: "/plan3d/rooms/textures/wallmap_yellow.png", thumbnail: "/plan3d/rooms/thumbnails/thumbnail_wallmap_yellow.png", stretch: true, scale: 0 },
+    { name: "Light Brick", url: "/plan3d/rooms/textures/light_brick.jpg", thumbnail: "/plan3d/rooms/thumbnails/thumbnail_light_brick.jpg", stretch: false, scale: 100 },
+    { name: "Light Wood", url: "/plan3d/rooms/textures/light_fine_wood.jpg", thumbnail: "/plan3d/rooms/thumbnails/thumbnail_light_fine_wood.jpg", stretch: false, scale: 300 },
   ];
 
   const floorTextures = [
-    { name: 'Hardwood', url: '/plan3d/rooms/textures/hardwood.png', thumbnail: '/plan3d/rooms/textures/hardwood.png', stretch: false, scale: 400 },
-    { name: 'Marble Tiles', url: '/plan3d/rooms/textures/marbletiles.jpg', thumbnail: '/plan3d/rooms/thumbnails/thumbnail_marbletiles.jpg', stretch: false, scale: 300 },
-    { name: 'Light Wood', url: '/plan3d/rooms/textures/light_fine_wood.jpg', thumbnail: '/plan3d/rooms/thumbnails/thumbnail_light_fine_wood.jpg', stretch: false, scale: 300 },
+    { name: "Hardwood", url: "/plan3d/rooms/textures/hardwood.png", thumbnail: "/plan3d/rooms/textures/hardwood.png", stretch: false, scale: 400 },
+    { name: "Marble Tiles", url: "/plan3d/rooms/textures/marbletiles.jpg", thumbnail: "/plan3d/rooms/thumbnails/thumbnail_marbletiles.jpg", stretch: false, scale: 300 },
+    { name: "Light Wood", url: "/plan3d/rooms/textures/light_fine_wood.jpg", thumbnail: "/plan3d/rooms/thumbnails/thumbnail_light_fine_wood.jpg", stretch: false, scale: 300 },
   ];
 
-  // Preload texture images for faster loading
   useEffect(() => {
     const preloadImages = (textures: any[]) => {
-      textures.forEach(texture => {
+      textures.forEach((texture) => {
         const img = new Image();
         img.onload = () => console.log(`✅ Preloaded: ${texture.url}`);
         img.onerror = (e) => console.error(`❌ Failed to preload: ${texture.url}`, e);
@@ -256,35 +559,29 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
       });
     };
 
-    console.log('🔄 Starting texture preload...');
+    console.log("🔄 Starting texture preload...");
     preloadImages([...wallTextures, ...floorTextures]);
-  }, []); // Empty dependency array since texture arrays are static
+  }, []);
 
   const handleTextureChange = (textureUrl: string, stretch: boolean, scale: number) => {
     console.log(`🎨 Applying texture: ${textureUrl}`, { stretch, scale });
 
     try {
       if (selectedWall) {
-        console.log('🧱 Applying to wall:', selectedWall);
+        console.log("🧱 Applying to wall:", selectedWall);
         selectedWall.setTexture(textureUrl, stretch, scale);
       } else if (selectedFloor) {
-        console.log('🏠 Applying to floor:', selectedFloor);
+        console.log("🏠 Applying to floor:", selectedFloor);
         selectedFloor.setTexture(textureUrl, stretch, scale);
       } else {
-        console.error('❌ No wall or floor selected!');
+        console.error("❌ No wall or floor selected!");
         return;
       }
 
-      // Close menu immediately after texture application
       onClose();
-
     } catch (error) {
-      console.error('❌ Texture application failed:', error);
+      console.error("❌ Texture application failed:", error);
     }
-  };
-
-  const handleClose = () => {
-    onClose();
   };
 
   const selectedObject = selectedWall || selectedFloor;
@@ -294,81 +591,87 @@ function WallFloorEditingPanel({ selectedWall, selectedFloor, onClose }: { selec
 
   const isWall = !!selectedWall;
   const textures = isWall ? wallTextures : floorTextures;
-  const objectType = isWall ? 'Wall' : 'Floor';
+  const objectType = isWall ? "Wall" : "Floor";
 
   return (
-    <Card
-      position="absolute"
-      top={4}
-      left={4}
-      width="280px"
-      bg={cardBg}
-      color={textColor}
-      borderColor={borderColor}
-      borderWidth="1px"
-      boxShadow="lg"
-      zIndex={20}
-    >
-      <CardBody p={4}>
-        <VStack spacing={4} align="stretch">
-          <Box>
-            <Flex justify="space-between" align="center" mb={2}>
-              <Text fontSize="lg" fontWeight="bold">
-                {objectType} Texture
-              </Text>
-              <IconButton
-                aria-label="Close texture panel"
-                icon={<FiX />}
-                size="sm"
-                variant="ghost"
-                onClick={handleClose}
-              />
-            </Flex>
-            <Divider />
-          </Box>
-
-          <VStack spacing={3} align="stretch">
-            <Text fontSize="sm" fontWeight="medium" color="gray.500">
-              Select a texture:
-            </Text>
-
-            <Box maxHeight="300px" overflowY="auto">
-              <VStack spacing={2}>
-                {textures.map((texture, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    colorScheme="gray"
-                    size="sm"
-                    width="full"
-                    height="60px"
-                    onClick={() => handleTextureChange(texture.url, texture.stretch, texture.scale)}
-                    leftIcon={
-                      <Box
-                        width="40px"
-                        height="40px"
-                        borderRadius="4px"
-                        backgroundImage={`url(${texture.thumbnail})`}
-                        backgroundSize="cover"
-                        backgroundPosition="center"
-                        border="1px solid"
-                        borderColor="gray.300"
-                      />
-                    }
-                    justifyContent="flex-start"
-                    px={3}
-                  >
-                    <Text fontSize="sm" ml={2}>
-                      {texture.name}
-                    </Text>
-                  </Button>
-                ))}
-              </VStack>
+    <EditorOverlay>
+      <Card
+        position="absolute"
+        top={{ base: "18px", md: "18px" }}
+        left={{ base: "16px", md: "16px" }}
+        width="280px"
+        bg={cardBg}
+        color={textColor}
+        borderColor={borderColor}
+        borderWidth="1px"
+        boxShadow="2xl"
+        zIndex={41}
+        pointerEvents="auto"
+        onMouseDown={stopScenePointerEvent}
+        onPointerDown={stopScenePointerEvent}
+        onTouchStart={stopScenePointerEvent}
+      >
+        <CardBody p={4}>
+          <VStack spacing={4} align="stretch">
+            <Box>
+              <Flex justify="space-between" align="center" mb={2}>
+                <Text fontSize="lg" fontWeight="bold">
+                  {objectType} Texture
+                </Text>
+                <IconButton
+                  aria-label="Close texture panel"
+                  icon={<FiX />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={onClose}
+                />
+              </Flex>
+              <Divider />
             </Box>
+
+            <VStack spacing={3} align="stretch">
+              <Text fontSize="sm" fontWeight="medium" color="gray.500">
+                Select a texture:
+              </Text>
+
+              <Box maxHeight="300px" overflowY="auto">
+                <VStack spacing={2}>
+                  {textures.map((texture, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      colorScheme="gray"
+                      size="sm"
+                      width="full"
+                      height="60px"
+                      onClick={() => handleTextureChange(texture.url, texture.stretch, texture.scale)}
+                      leftIcon={
+                        <Box
+                          width="40px"
+                          height="40px"
+                          borderRadius="4px"
+                          backgroundImage={`url(${texture.thumbnail})`}
+                          backgroundSize="cover"
+                          backgroundPosition="center"
+                          border="1px solid"
+                          borderColor="gray.300"
+                        />
+                      }
+                      justifyContent="flex-start"
+                      px={3}
+                    >
+                      <Text fontSize="sm" ml={2}>
+                        {texture.name}
+                      </Text>
+                    </Button>
+                  ))}
+                </VStack>
+              </Box>
+            </VStack>
           </VStack>
-        </VStack>
-      </CardBody>
-    </Card>
+        </CardBody>
+      </Card>
+    </EditorOverlay>
   );
 }
 
@@ -376,123 +679,197 @@ function Site() {
   const bgColor = useColorModeValue("ui.light", "ui.dark");
   const cardBg = useColorModeValue("white", "gray.800");
 
-  // Get the active organization context
   const { activeOrganizationContext } = useOrganizationContext();
 
-  // State for selected scene
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
-
-  // Ref to remember the previous simulation scene to restore it when turning off Real Mode
   const prevSimulationSceneRef = useRef<string | null>(null);
-
-  // State for Real Mode vs Simulation Mode
   const [isRealMode, setIsRealMode] = useState<boolean>(false);
-
-  // State to track if a scene has been loaded
   const [hasLoadedScene, setHasLoadedScene] = useState<boolean>(false);
-
-  // State to track if user is in editing mode
   const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
-
-  // State to control which Real Mode side panel is open
   const [openRealPanel, setOpenRealPanel] = useState<RealModePanel>(null);
-
-  // State to track selected item for editing
   const [selectedItem, setSelectedItem] = useState<any>(null);
-
-  // State to track selected wall/floor for texture editing
+  const [selectedItemRevision, setSelectedItemRevision] = useState(0);
+  const [isFloorplanPlacementActive, setIsFloorplanPlacementActive] = useState(false);
   const [selectedWall, setSelectedWall] = useState<any>(null);
   const [selectedFloor, setSelectedFloor] = useState<any>(null);
 
-  // Toast for notifications
   const showToast = useCustomToast();
-
-  // Ref to access Blueprint3D functions
   const blueprint3DRef = useRef<Blueprint3DAppRef>(null);
-
-  // Ref to access ScenesList functions for refreshing
   const scenesListRef = useRef<any>(null);
-
-  // Track the previous organization UID to detect actual changes
+  const sceneLoadRequestRef = useRef(0);
+  const prevSimulationSceneSnapshotRef = useRef<any | null>(null);
   const prevOrgUidRef = useRef<string | undefined>(activeOrganizationContext?.uid);
 
-  // Effect to handle organization context changes
   useEffect(() => {
     const currentOrgUid = activeOrganizationContext?.uid;
     const prevOrgUid = prevOrgUidRef.current;
 
-    // Only reset if the organization actually changed (not on initial load)
     if (prevOrgUid !== undefined && currentOrgUid !== prevOrgUid) {
-      console.log('Organization context changed, resetting viewer');
-
-      // Reset the viewer when organization context changes
+      console.log("Organization context changed, resetting viewer");
+      sceneLoadRequestRef.current += 1;
+      prevSimulationSceneRef.current = null;
+      prevSimulationSceneSnapshotRef.current = null;
       setHasLoadedScene(false);
       setSelectedScene(null);
 
-      // Show notification about the reset
       showToast(
-        'Context Changed',
-        'Viewer reset due to organization change. Please select a new scene.',
-        'success'
+        "Context Changed",
+        "Viewer reset due to organization change. Please select a new scene.",
+        "success"
       );
     }
 
-    // Update the ref for next comparison
     prevOrgUidRef.current = currentOrgUid;
-  }, [activeOrganizationContext?.uid, showToast]); // Only depend on organization UID and showToast
+  }, [activeOrganizationContext?.uid, showToast]);
 
-  // Effect to handle Real Mode Scene logic
+  const getViewerSceneSnapshot = () => {
+    try {
+      const blueprint = blueprint3DRef.current?.getBlueprint3D?.();
+      const serialized = blueprint?.model?.exportSerialized?.();
+      return serialized ? JSON.parse(serialized) : null;
+    } catch (error) {
+      console.warn("Could not read current viewer snapshot:", error);
+      return null;
+    }
+  };
+
+  const loadPlanIntoViewer = (planData: any) => {
+    if (!blueprint3DRef.current) {
+      throw new Error("Blueprint3D viewer not ready");
+    }
+
+    blueprint3DRef.current.loadPlan({
+      uid: planData?.uid,
+      floorplan: {
+        corners: planData?.floorplan?.corners || {},
+        walls: planData?.floorplan?.walls || [],
+        wallTextures: planData?.floorplan?.wallTextures || [],
+        floorTextures: planData?.floorplan?.floorTextures || {},
+        newFloorTextures: planData?.floorplan?.newFloorTextures || {},
+      },
+      items: planData?.items || [],
+    });
+  };
+
+  const loadSceneIntoViewer = async (
+    sceneId: string,
+    options?: {
+      showSuccessToast?: boolean;
+      bypassEditingGuard?: boolean;
+    }
+  ) => {
+    if (isEditingMode && !options?.bypassEditingGuard) {
+      showToast(
+        "Cannot Change Scene",
+        "Please finish editing or cancel editing before selecting a different scene.",
+        "error"
+      );
+      return false;
+    }
+
+    const requestId = ++sceneLoadRequestRef.current;
+    setIsFloorplanPlacementActive(false);
+    console.log("Selected scene:", sceneId);
+
+    try {
+      const sceneData = await ScenesService.readScene({ sceneId });
+
+      if (requestId !== sceneLoadRequestRef.current) {
+        return false;
+      }
+
+      loadPlanIntoViewer({
+        uid: sceneData.uid,
+        floorplan: sceneData.floorplan,
+        items: sceneData.items || [],
+      });
+
+      setSelectedScene(sceneData.uid);
+      setHasLoadedScene(true);
+
+      if (options?.showSuccessToast !== false) {
+        showToast(
+          "Scene Loaded",
+          `Scene ${sceneData.uid.substring(0, 8)}... has been loaded successfully`,
+          "success"
+        );
+      }
+
+      return true;
+    } catch (error) {
+      if (requestId === sceneLoadRequestRef.current) {
+        console.error("Error loading scene:", error);
+        showToast(
+          "Load Failed",
+          "Failed to load the selected scene. Please try again.",
+          "error"
+        );
+      }
+      return false;
+    }
+  };
+
   useEffect(() => {
     const orgId = activeOrganizationContext?.uid;
     if (!orgId) return;
 
     if (isRealMode) {
-      // We are switching TO Real Mode.
-      // 1. Save the currently selected simulation scene so we can restore it later
       prevSimulationSceneRef.current = selectedScene;
+      prevSimulationSceneSnapshotRef.current = getViewerSceneSnapshot();
 
       const setupRealModeScene = async () => {
         try {
           const scenesData = await OrganizationsService.readOrganizationScenes({ id: orgId });
           const scenes = scenesData?.data || [];
+          const realModeScene = scenes.find((s) => s.label === "Real Mode Scene");
 
-          const realModeScene = scenes.find(s => s.label === "Real Mode Scene");
-
-          if (realModeScene) {
-            handleSceneSelection(realModeScene.uid);
-          } else {
-            // Create the Real Mode Scene using the currently selected simulation
-            // scene as the base layout whenever possible. Robot items are removed
-            // so only the environment is copied into Real Mode.
-            let sourceFloorplan: any = { corners: {}, walls: [] };
-            let sourceItems: any[] = [];
-            const sourceSceneId = prevSimulationSceneRef.current || selectedScene;
-
-            if (sourceSceneId) {
-              try {
-                const sourceScene = await ScenesService.readScene({ sceneId: sourceSceneId });
-                sourceFloorplan = sourceScene.floorplan || sourceFloorplan;
-                sourceItems = (sourceScene.items || []).filter((item: any) => {
-                  const meta = item?.metadata ?? item;
-                  return !meta?.device_uid && !meta?.deviceId;
-                });
-              } catch (copyError) {
-                console.warn('Could not clone the current simulation scene into Real Mode:', copyError);
-              }
-            }
-
-            const newScene = await ScenesService.createScene({
-              requestBody: {
-                label: "Real Mode Scene",
-                organization_id: orgId,
-                floorplan: sourceFloorplan,
-                items: sourceItems,
-              }
+          if (realModeScene?.uid) {
+            await loadSceneIntoViewer(realModeScene.uid, {
+              showSuccessToast: false,
+              bypassEditingGuard: true,
             });
+            return;
+          }
 
-            if (newScene && newScene.uid) {
-              handleSceneSelection(newScene.uid);
+          let sourceFloorplan: any = { corners: {}, walls: [], wallTextures: [], floorTextures: {}, newFloorTextures: {} };
+          let sourceItems: any[] = [];
+          const sourceSceneId = prevSimulationSceneRef.current || selectedScene;
+
+          if (sourceSceneId) {
+            try {
+              const sourceScene = await ScenesService.readScene({ sceneId: sourceSceneId });
+              sourceFloorplan = sourceScene.floorplan || sourceFloorplan;
+              sourceItems = (sourceScene.items || []).filter((item: any) => {
+                const meta = item?.metadata ?? item;
+                return !meta?.device_uid && !meta?.deviceId;
+              });
+            } catch (copyError) {
+              console.warn("Could not clone the current simulation scene from the API:", copyError);
             }
+          }
+
+          if ((!sourceItems.length && (!sourceFloorplan?.walls || !sourceFloorplan.walls.length)) && prevSimulationSceneSnapshotRef.current) {
+            sourceFloorplan = prevSimulationSceneSnapshotRef.current.floorplan || sourceFloorplan;
+            sourceItems = (prevSimulationSceneSnapshotRef.current.items || []).filter((item: any) => {
+              const meta = item?.metadata ?? item;
+              return !meta?.device_uid && !meta?.deviceId;
+            });
+          }
+
+          const newScene = await ScenesService.createScene({
+            requestBody: {
+              label: "Real Mode Scene",
+              organization_id: orgId,
+              floorplan: sourceFloorplan,
+              items: sourceItems,
+            },
+          });
+
+          if (newScene?.uid) {
+            await loadSceneIntoViewer(newScene.uid, {
+              showSuccessToast: false,
+              bypassEditingGuard: true,
+            });
           }
         } catch (error) {
           console.error("Failed to setup Real Mode Scene:", error);
@@ -500,181 +877,209 @@ function Site() {
         }
       };
 
-      setupRealModeScene();
+      void setupRealModeScene();
     } else {
-      // We are switching TO Simulation Mode (from Real Mode).
-      // Restore previous scene
-      const sceneToRestore = prevSimulationSceneRef.current;
-      if (sceneToRestore) {
-        handleSceneSelection(sceneToRestore);
-      } else {
-        // Just clear selection if there was none
+      const restorePreviousSimulationScene = async () => {
+        const sceneToRestore = prevSimulationSceneRef.current;
+
+        if (sceneToRestore) {
+          const restored = await loadSceneIntoViewer(sceneToRestore, {
+            showSuccessToast: false,
+            bypassEditingGuard: true,
+          });
+
+          if (restored) {
+            return;
+          }
+        }
+
+        const snapshot = prevSimulationSceneSnapshotRef.current;
+        if (snapshot) {
+          try {
+            loadPlanIntoViewer(snapshot);
+            setSelectedScene(snapshot.uid || sceneToRestore || null);
+            setHasLoadedScene(true);
+            return;
+          } catch (error) {
+            console.error("Failed to restore simulation snapshot:", error);
+          }
+        }
+
         setSelectedScene(null);
         setHasLoadedScene(false);
-      }
-    }
-  }, [isRealMode]); // intentionally omit other dependencies to ONLY trigger on toggle
+      };
 
+      void restorePreviousSimulationScene();
+    }
+  }, [isRealMode]);
 
   const handleToggleRealPanel = (panel: Exclude<RealModePanel, null>) => {
     setOpenRealPanel((prev) => (prev === panel ? null : panel));
   };
 
-  // Handle creating a new plan
   const handleCreateNewPlan = () => {
-    // Prevent creating new plans while in editing mode
     if (isEditingMode) {
       showToast(
-        'Cannot Create New Plan',
-        'Please finish editing or cancel editing before creating a new plan.',
-        'error'
+        "Cannot Create New Plan",
+        "Please finish editing or cancel editing before creating a new plan.",
+        "error"
       );
       return;
     }
 
     const defaultPlan = createDefaultFloorplan();
-    console.log('Creating new plan:', defaultPlan);
+    console.log("Creating new plan:", defaultPlan);
 
-    // Load the plan into the Blueprint3D viewer
     if (blueprint3DRef.current) {
-      blueprint3DRef.current.loadPlan(defaultPlan);
+      sceneLoadRequestRef.current += 1;
+      setIsFloorplanPlacementActive(false);
+      loadPlanIntoViewer(defaultPlan);
+      setSelectedScene(defaultPlan.uid || null);
       setHasLoadedScene(true);
-      console.log('Plan loaded into viewer automatically');
+      console.log("Plan loaded into viewer automatically");
     } else {
-      console.warn('Blueprint3D ref not available, plan not loaded');
+      console.warn("Blueprint3D ref not available, plan not loaded");
     }
   };
 
-  // Handle scene selection and loading
   const handleSceneSelection = async (sceneId: string) => {
-    // Prevent scene changes while in editing mode
-    if (isEditingMode) {
-      showToast(
-        'Cannot Change Scene',
-        'Please finish editing or cancel editing before selecting a different scene.',
-        'error'
-      );
-      return;
-    }
-
-    setSelectedScene(sceneId);
-    console.log("Selected scene:", sceneId);
-
-    try {
-      // Fetch the scene data from the API
-      console.log('Fetching scene data for:', sceneId);
-      const sceneData = await ScenesService.readScene({ sceneId });
-
-      console.log('Scene data received:', sceneData);
-
-      // Transform the scene data to the format expected by Blueprint3D
-      const blueprintData = {
-        uid: sceneData.uid,
-        floorplan: sceneData.floorplan,
-        items: sceneData.items || []
-      };
-
-      // Load the scene into the Blueprint3D viewer
-      if (blueprint3DRef.current) {
-        blueprint3DRef.current.loadPlan(blueprintData);
-        setHasLoadedScene(true);
-        console.log('Scene loaded into viewer:', sceneId);
-
-        showToast(
-          'Scene Loaded',
-          `Scene ${sceneId.substring(0, 8)}... has been loaded successfully`,
-          'success'
-        );
-      } else {
-        console.warn('Blueprint3D ref not available, scene not loaded');
-        showToast(
-          'Load Error',
-          'Blueprint3D viewer not ready. Please try again.',
-          'error'
-        );
-      }
-    } catch (error) {
-      console.error('Error loading scene:', error);
-      showToast(
-        'Load Failed',
-        'Failed to load the selected scene. Please try again.',
-        'error'
-      );
-    }
+    await loadSceneIntoViewer(sceneId, { showSuccessToast: true });
   };
 
-  // Handle when a scene is saved
   const handleSceneSaved = (sceneId: string) => {
-    console.log('Scene saved, refreshing scenes list:', sceneId);
+    console.log("Scene saved, refreshing scenes list:", sceneId);
+    setSelectedScene(sceneId);
+    setHasLoadedScene(true);
 
-    // Refresh the scenes list if the ref is available
     if (scenesListRef.current && scenesListRef.current.refreshScenes) {
       scenesListRef.current.refreshScenes();
     }
   };
 
-  // Handle editing mode changes
   const handleEditingModeChange = (editingMode: boolean) => {
     setIsEditingMode(editingMode);
 
-    // Control Blueprint3D controller enabled state based on editing mode
-    if (blueprint3DRef.current) {
-      blueprint3DRef.current.setControllerEnabled(editingMode);
-    }
+    const shouldEnableController = Boolean(
+      editingMode && !isFloorplanPlacementActive
+    );
+    blueprint3DRef.current?.setControllerEnabled(shouldEnableController);
 
-    // Clear selections when exiting editing mode
     if (!editingMode) {
       setSelectedItem(null);
       setSelectedWall(null);
       setSelectedFloor(null);
+      setIsFloorplanPlacementActive(false);
 
-      // Also clear Blueprint3D selections
       if (blueprint3DRef.current) {
         blueprint3DRef.current.clearSelections();
       }
     }
   };
 
-  // Handle selected item changes
+  useEffect(() => {
+    const shouldEnableController = Boolean(
+      isEditingMode && !isFloorplanPlacementActive
+    );
+    blueprint3DRef.current?.setControllerEnabled(shouldEnableController);
+  }, [isEditingMode, isFloorplanPlacementActive, selectedScene]);
+
   const handleSelectedItemChange = (item: any) => {
     setSelectedItem(item);
+    setSelectedItemRevision((value) => value + 1);
+    if (!item) {
+      setIsFloorplanPlacementActive(false);
+    }
   };
 
-  // Handle selected wall changes
   const handleSelectedWallChange = (wall: any) => {
     setSelectedWall(wall);
   };
 
-  // Handle selected floor changes
   const handleSelectedFloorChange = (floor: any) => {
     setSelectedFloor(floor);
   };
 
+  const cancelFloorplanPlacement = (returnToDesign = true) => {
+    setIsFloorplanPlacementActive(false);
+    if (returnToDesign) {
+      blueprint3DRef.current?.setView?.("DESIGN");
+    }
+  };
+
+  const handleStartFloorplanPlacement = (item: any) => {
+    if (!item || !isChargerItem(item)) return;
+    applyChargerEditorValues(item, getChargerEditorValues(item));
+    setSelectedWall(null);
+    setSelectedFloor(null);
+    setIsFloorplanPlacementActive(true);
+    blueprint3DRef.current?.setView?.("FLOORPLAN");
+
+    const bp = blueprint3DRef.current?.getBlueprint3D?.();
+    const BP3DLib = (window as any).BP3D;
+    const moveMode = BP3DLib?.Floorplanner?.floorplannerModes?.MOVE;
+    if (bp?.floorplanner && moveMode !== undefined) {
+      bp.floorplanner.setMode(moveMode);
+    }
+  };
+
   useEffect(() => {
-    // Reset panels whenever Real Mode changes
+    if (!isFloorplanPlacementActive || !selectedItem || !isChargerItem(selectedItem)) {
+      return;
+    }
+
+    const canvas = document.getElementById("floorplanner-canvas");
+    if (!canvas) return;
+
+    const handleCanvasClick = (event: MouseEvent) => {
+      const bp = blueprint3DRef.current?.getBlueprint3D?.();
+      const floorplanner = bp?.floorplanner;
+      if (!floorplanner) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const cmPerPixel = Number(floorplanner.cmPerPixel) || 1;
+      const originX = Number(floorplanner.originX) || 0;
+      const originY = Number(floorplanner.originY) || 0;
+
+      const targetX = (event.clientX - rect.left) * cmPerPixel + originX * cmPerPixel;
+      const targetZ = (event.clientY - rect.top) * cmPerPixel + originY * cmPerPixel;
+
+      selectedItem.position.x = targetX;
+      selectedItem.position.z = targetZ;
+      applyChargerEditorValues(selectedItem, {
+        ...getChargerEditorValues(selectedItem),
+        sceneX: roundTo(targetX),
+        sceneZ: roundTo(targetZ),
+      });
+      setSelectedItemRevision((value) => value + 1);
+      cancelFloorplanPlacement(true);
+    };
+
+    canvas.addEventListener("click", handleCanvasClick);
+    return () => {
+      canvas.removeEventListener("click", handleCanvasClick);
+    };
+  }, [isFloorplanPlacementActive, selectedItem]);
+
+  useEffect(() => {
     setOpenRealPanel(null);
   }, [isRealMode]);
 
   useEffect(() => {
-    // Collapse both panels when selecting an item or entering editing mode
     if (selectedItem || isEditingMode) {
       setOpenRealPanel(null);
     }
   }, [selectedItem, isEditingMode]);
 
-  // Handle closing the wall/floor texture panel
   const handleCloseTexturePanel = () => {
-    console.log('🚪 handleCloseTexturePanel called - clearing wall/floor selections');
-    // Clear the local state to hide the dialog
+    console.log("🚪 handleCloseTexturePanel called - clearing wall/floor selections");
     setSelectedWall(null);
     setSelectedFloor(null);
 
-    // Also clear Blueprint3D selections
     if (blueprint3DRef.current) {
-      console.log('🔧 Calling clearSelections on Blueprint3D ref');
+      console.log("🔧 Calling clearSelections on Blueprint3D ref");
       blueprint3DRef.current.clearSelections();
     } else {
-      console.error('❌ Blueprint3D ref is null!');
+      console.error("❌ Blueprint3D ref is null!");
     }
   };
 
@@ -686,7 +1091,6 @@ function Site() {
             Site Management
           </Heading>
 
-          {/* Enhanced Mode Toggle */}
           <Box
             display="flex"
             alignItems="center"
@@ -701,7 +1105,6 @@ function Site() {
             onClick={() => setIsRealMode(!isRealMode)}
             userSelect="none"
           >
-            {/* Simulation Label */}
             <Box
               px={3}
               py={1}
@@ -733,7 +1136,6 @@ function Site() {
               </Text>
             </Box>
 
-            {/* Real Mode Label */}
             <Box
               px={3}
               py={1}
@@ -768,7 +1170,6 @@ function Site() {
           </Box>
         </Flex>
 
-        {/* Organization Context Header */}
         {activeOrganizationContext && (
           <Box
             bg={useColorModeValue("blue.50", "blue.900")}
@@ -807,7 +1208,6 @@ function Site() {
           height="75%"
         >
           <Flex gap="20px" direction={{ base: "column", md: "row" }} height="100%">
-            {/* Left: Scenes List */}
             {!isRealMode && (
               <Box flexBasis={{ base: "100%", md: "20%" }} height="100%">
                 <ScenesList
@@ -820,7 +1220,6 @@ function Site() {
               </Box>
             )}
 
-            {/* Right: Blueprint3D Application */}
             <Box flexBasis={{ base: "100%", md: isRealMode ? "100%" : "80%" }} height="100%">
               <Card
                 height="100%"
@@ -837,12 +1236,40 @@ function Site() {
                   <Blueprint3DApp
                     ref={blueprint3DRef}
                     isRealMode={isRealMode}
+                    pauseDeviceSync={isEditingMode}
                     onSceneSaved={handleSceneSaved}
                     onEditingModeChange={handleEditingModeChange}
                     onSelectedItemChange={handleSelectedItemChange}
                     onSelectedWallChange={handleSelectedWallChange}
                     onSelectedFloorChange={handleSelectedFloorChange}
                   />
+
+                  {isFloorplanPlacementActive && (
+                    <Box
+                      position="absolute"
+                      top={4}
+                      left={4}
+                      zIndex={30}
+                      bg={useColorModeValue("white", "gray.800")}
+                      borderWidth="1px"
+                      borderColor={useColorModeValue("gray.200", "gray.600")}
+                      boxShadow="lg"
+                      borderRadius="md"
+                      px={4}
+                      py={3}
+                      maxW="420px"
+                    >
+                      <Text fontWeight="bold" mb={1}>
+                        Colocación exacta del cargador
+                      </Text>
+                      <Text fontSize="sm" color={useColorModeValue("gray.600", "gray.300")} mb={3}>
+                        Haz click en el floorplan para fijar la posición exacta del cargador. Al terminar se volverá automáticamente a la vista 3D.
+                      </Text>
+                      <Button size="sm" variant="outline" onClick={() => cancelFloorplanPlacement(true)}>
+                        Cancelar colocación
+                      </Button>
+                    </Box>
+                  )}
 
                   {!hasLoadedScene && (
                     <Center
@@ -867,10 +1294,17 @@ function Site() {
                   {selectedItem && isEditingMode && (
                     <ItemEditingPanel
                       selectedItem={selectedItem}
+                      refreshKey={selectedItemRevision}
+                      isFloorplanPlacementActive={isFloorplanPlacementActive}
+                      onItemUpdated={() => setSelectedItemRevision((value) => value + 1)}
+                      onStartFloorplanPlacement={handleStartFloorplanPlacement}
                       onClose={() => {
-                        if (blueprint3DRef.current) {
-                          blueprint3DRef.current.clearSelections();
-                        }
+                        cancelFloorplanPlacement(true);
+                        setSelectedItem(null);
+                        setSelectedWall(null);
+                        setSelectedFloor(null);
+                        setSelectedItemRevision((value) => value + 1);
+                        blueprint3DRef.current?.clearSelections();
                       }}
                     />
                   )}
@@ -883,32 +1317,33 @@ function Site() {
                     />
                   )}
 
-                  {/* Right-side Real Mode panels wrapper */}
-                  <Box
-                    position="absolute"
-                    top={4}
-                    right={4}
-                    zIndex={30}
-                    display="flex"
-                    flexDirection="row"
-                    justifyContent="flex-end"
-                    alignItems="flex-start"
-                    gap={3}
-                    pointerEvents="auto"
-                    maxHeight="calc(100% - 32px)"
-                  >
-                    <RobotInfoPanel
-                      blueprint3DRef={blueprint3DRef}
-                      isVisible={isRealMode}
-                      isOpen={openRealPanel === "robots"}
-                      onToggle={() => handleToggleRealPanel("robots")}
-                    />
-                    <PredictionPanel
-                      isVisible={isRealMode}
-                      isOpen={openRealPanel === "prediction"}
-                      onToggle={() => handleToggleRealPanel("prediction")}
-                    />
-                  </Box>
+                  {!selectedItem && !isEditingMode && (
+                    <Box
+                      position="absolute"
+                      top={4}
+                      right={4}
+                      zIndex={30}
+                      display="flex"
+                      flexDirection="row"
+                      justifyContent="flex-end"
+                      alignItems="flex-start"
+                      gap={3}
+                      pointerEvents="auto"
+                      maxHeight="calc(100% - 32px)"
+                    >
+                      <RobotInfoPanel
+                        blueprint3DRef={blueprint3DRef}
+                        isVisible={isRealMode}
+                        isOpen={openRealPanel === "robots"}
+                        onToggle={() => handleToggleRealPanel("robots")}
+                      />
+                      <PredictionPanel
+                        isVisible={isRealMode}
+                        isOpen={openRealPanel === "prediction"}
+                        onToggle={() => handleToggleRealPanel("prediction")}
+                      />
+                    </Box>
+                  )}
                 </CardBody>
               </Card>
             </Box>

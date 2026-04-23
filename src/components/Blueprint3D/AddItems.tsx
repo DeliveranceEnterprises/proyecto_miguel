@@ -73,6 +73,11 @@ const itemCategories = [
       { name: 'pudu_ketty', image: 'plan3d/models/thumbnails/pudu_ketty.png', model: 'plan3d/models/js/pudu_ketty.glb', type: 1 },
       { name: 'viggo_sc50', image: 'plan3d/models/thumbnails/viggo_sc50.png', model: 'plan3d/models/js/viggo_sc50.glb', type: 1 },
       { name: 'Cargador', image: 'plan3d/models/thumbnails/robot.png', model: 'plan3d/models/js/baul.glb', type: 1 },
+      { name: 'Papelera', image: 'plan3d/models/thumbnails/thumbnail_papelera.png', model: 'plan3d/models/js/papelera.glb', type: 1 },
+      { name: 'Lavabo', image: 'plan3d/models/thumbnails/thumbnail_lavabo.png', model: 'plan3d/models/js/lavabo.glb', type: 1 },
+      { name: 'Estacion_Carga', image: 'plan3d/models/thumbnails/thumbnail_estacion_carga.png', model: 'plan3d/models/js/espacion_carga.glb', type: 1 },
+      { name: 'Cajas', image: 'plan3d/models/thumbnails/thumbnail_cajas.png', model: 'plan3d/models/js/cajas.glb', type: 1 },
+      { name: 'Escalera', image: 'plan3d/models/thumbnails/thumbnail_escalera.png', model: 'plan3d/models/js/escalera.glb', type: 1 },
     ]
   }
 
@@ -103,6 +108,14 @@ const AddItems: React.FC = () => {
             ? {
                 anchor_uid: anchorUid,
                 anchor_type: 'charger',
+                linked_robot_uid: null,
+                real_origin_x: 0,
+                real_origin_y: 0,
+                real_rotation_offset_rad: 0,
+                x_scale: 100,
+                y_scale: 100,
+                x_offset: 0,
+                y_offset: 0,
               }
             : {}),
         };

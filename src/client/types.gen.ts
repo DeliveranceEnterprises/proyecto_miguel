@@ -296,7 +296,7 @@ export type SceneItem = {
      */
     zpos: number;
     /**
-     * Rotation angle in degrees
+     * Rotation angle used by Blueprint3D
      */
     rotation: number;
     /**
@@ -315,6 +315,13 @@ export type SceneItem = {
      * Whether the item is fixed in position
      */
     fixed?: boolean;
+    device_uid?: (string | null);
+    metadata?: ({
+        [key: string]: unknown;
+    } | null);
+    anchor_uid?: (string | null);
+    anchor_type?: (string | null);
+    linked_robot_uid?: (string | null);
 };
 
 export type ScenePublic = {

@@ -16,12 +16,13 @@ function getItemDeviceUid(item: any): string {
 export function useDeviceSync(
   blueprint3d: any,
   simulatingUidRef: MutableRefObject<string | null>,
-  isRealMode: boolean
+  isRealMode: boolean,
+  paused = false
 ) {
   const lastKnownRef = useRef<Record<string, { x: number; y: number; status: string }>>({});
 
   useEffect(() => {
-    if (!blueprint3d) return;
+    if (!blueprint3d || paused) return;
 
     const poll = async () => {
       const scene = blueprint3d?.model?.scene;
@@ -68,5 +69,5 @@ export function useDeviceSync(
 
     const interval = setInterval(poll, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [blueprint3d, simulatingUidRef, isRealMode]);
+  }, [blueprint3d, simulatingUidRef, isRealMode, paused]);
 }

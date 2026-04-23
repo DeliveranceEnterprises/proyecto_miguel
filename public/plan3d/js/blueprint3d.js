@@ -2664,10 +2664,11 @@ var BP3D;
                 var objects = this.scene.getItems();
                 for (var i = 0; i < objects.length; i++) {
                     var object = objects[i];
+                    var itemMetadata = object.metadata || {};
                     items_arr[i] = {
-                        item_name: object.metadata.itemName,
-                        item_type: object.metadata.itemType,
-                        model_url: object.metadata.modelUrl,
+                        item_name: itemMetadata.itemName,
+                        item_type: itemMetadata.itemType,
+                        model_url: itemMetadata.modelUrl,
                         xpos: object.position.x,
                         ypos: object.position.y,
                         zpos: object.position.z,
@@ -2676,17 +2677,21 @@ var BP3D;
                         scale_y: object.scale.y,
                         scale_z: object.scale.z,
                         fixed: object.fixed,
-                        device_uid: object.device_uid || null,  // <-- añadir esto
+                        device_uid: object.device_uid || null,
+                        metadata: itemMetadata,
+                        anchor_uid: object.anchor_uid || itemMetadata.anchor_uid || null,
+                        anchor_type: object.anchor_type || itemMetadata.anchor_type || null,
+                        linked_robot_uid: object.linked_robot_uid || itemMetadata.linked_robot_uid || null,
                         // Preserve necessary metadata
-                        format: object.metadata.format,
-                        elevation: object.metadata.elevation,
-                        defaultHeight: object.metadata.defaultHeight,
-                        deviceId: object.metadata.deviceId,
-                        deviceCategory: object.metadata.deviceCategory,
-                        deviceModel: object.metadata.deviceModel,
-                        deviceImage: object.metadata.deviceImage,
-                        deviceMapKey: object.metadata.deviceMapKey,
-                        deviceEnabled: object.metadata.deviceEnabled
+                        format: itemMetadata.format,
+                        elevation: itemMetadata.elevation,
+                        defaultHeight: itemMetadata.defaultHeight,
+                        deviceId: itemMetadata.deviceId,
+                        deviceCategory: itemMetadata.deviceCategory,
+                        deviceModel: itemMetadata.deviceModel,
+                        deviceImage: itemMetadata.deviceImage,
+                        deviceMapKey: itemMetadata.deviceMapKey,
+                        deviceEnabled: itemMetadata.deviceEnabled
                     };
                 }
                 var room = {
@@ -2701,7 +2706,7 @@ var BP3D;
                 this.floorplan.loadFloorplan(floorplan);
                 items.forEach(function (item) {
                     var position = new THREE.Vector3(item.xpos, item.ypos, item.zpos);
-                    var metadata = {
+                    var metadata = $.extend({}, item.metadata || {}, {
                         itemName: item.item_name,
                         resizable: item.resizable,
                         itemType: item.item_type,
@@ -2715,7 +2720,16 @@ var BP3D;
                         deviceImage: item.deviceImage,
                         deviceMapKey: item.deviceMapKey,
                         deviceEnabled: item.deviceEnabled
-                    };
+                    });
+                    if (item.anchor_uid != null && metadata.anchor_uid == null) {
+                        metadata.anchor_uid = item.anchor_uid;
+                    }
+                    if (item.anchor_type != null && metadata.anchor_type == null) {
+                        metadata.anchor_type = item.anchor_type;
+                    }
+                    if (item.linked_robot_uid !== undefined && metadata.linked_robot_uid == null) {
+                        metadata.linked_robot_uid = item.linked_robot_uid;
+                    }
                     var scale = new THREE.Vector3(item.scale_x, item.scale_y, item.scale_z);
                     _this.scene.addItem(
                         item.item_type,

@@ -6,7 +6,6 @@ import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 import { ScenesService, OrganizationsService } from '../../client';
 import type { SceneCreate, SceneUpdate } from '../../client/types.gen';
 import useCustomToast from '../../hooks/useCustomToast';
-import { passwordRules } from '../../utils';
 
 const Viewer: React.FC = () => {
   const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange, appState, isRealMode } = useBlueprint3D();
@@ -19,6 +18,62 @@ const Viewer: React.FC = () => {
   const [simScenes, setSimScenes] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const scenePickerRef = useRef<HTMLDivElement>(null);
+  const editSnapshotRef = useRef<string | null>(null);
+
+  const buildSerializedScene = (sceneData: any) => JSON.stringify({
+    uid: sceneData?.uid ?? currentUID ?? '',
+    floorplan: {
+      corners: sceneData?.floorplan?.corners || {},
+      walls: sceneData?.floorplan?.walls || [],
+      wallTextures: sceneData?.floorplan?.wallTextures || [],
+      floorTextures: sceneData?.floorplan?.floorTextures || {},
+      newFloorTextures: sceneData?.floorplan?.newFloorTextures || {},
+    },
+    items: sceneData?.items || [],
+  });
+
+  const getExportedScenePayload = () => {
+    const raw = blueprint3d?.model?.exportSerialized?.();
+    if (!raw) {
+      throw new Error('Blueprint3D export is not available');
+    }
+
+    const parsedData = JSON.parse(raw);
+    return {
+      uid: parsedData?.uid || currentUID || '',
+      floorplan: {
+        corners: parsedData?.floorplan?.corners || {},
+        walls: parsedData?.floorplan?.walls || [],
+        wallTextures: parsedData?.floorplan?.wallTextures || [],
+        floorTextures: parsedData?.floorplan?.floorTextures || {},
+        newFloorTextures: parsedData?.floorplan?.newFloorTextures || {},
+      },
+      items: parsedData?.items || [],
+    };
+  };
+
+  const restoreScenePayload = (scenePayload: any) => {
+    if (!blueprint3d?.model) return;
+    blueprint3d.model.loadSerialized(buildSerializedScene(scenePayload));
+    if (scenePayload?.uid) {
+      onUIDChange(scenePayload.uid);
+    }
+  };
+
+  const captureEditSnapshot = () => {
+    try {
+      const payload = getExportedScenePayload();
+      editSnapshotRef.current = JSON.stringify(payload);
+    } catch (error) {
+      console.warn('Could not capture edit snapshot:', error);
+    }
+  };
+
+  const filterOutRobotItems = (items: any[] = []) =>
+    items.filter((item: any) => {
+      const meta = item?.metadata ?? item;
+      return !meta?.device_uid && !meta?.deviceId;
+    });
 
   // Close picker when clicking outside
   useEffect(() => {
@@ -104,98 +159,58 @@ const Viewer: React.FC = () => {
     }
 
     try {
-      const data = blueprint3d.model.exportSerialized();
-      const parsedData = JSON.parse(data);
-
-      console.log('Raw blueprint data:', parsedData);
-
-      // Check if we're updating an existing scene or creating a new one
-      const isExistingScene = currentUID && await checkSceneExists(currentUID);
+      const scenePayload = getExportedScenePayload();
+      const isExistingScene = Boolean(currentUID) && await checkSceneExists(currentUID);
 
       let response;
 
       if (isExistingScene) {
-        console.log('Updating existing scene:', currentUID);
-
-        // Transform the blueprint data for update (SceneUpdate format)
         const updateData: SceneUpdate = {
-          floorplan: {
-            corners: parsedData.floorplan?.corners || {},
-            walls: parsedData.floorplan?.walls || []
-          },
-          items: parsedData.items || [],
-          organization_id: activeOrgId
+          floorplan: scenePayload.floorplan,
+          items: scenePayload.items,
+          organization_id: activeOrgId,
         };
 
-        console.log('Updating scene via API:', updateData);
-
-        // PUT to update the existing scene
         response = await ScenesService.updateScene({
           sceneId: currentUID,
-          requestBody: updateData
+          requestBody: updateData,
         });
-
-        console.log('Scene updated successfully:', response);
 
         showToast(
           'Scene Updated Successfully!',
           `Your scene ${currentUID.substring(0, 8)}... has been updated`,
           'success'
         );
-
-        // Exit editing mode after successful save
-        setIsEditingMode(false);
-        // Notify parent component about editing mode change
-        if (onEditingModeChange) {
-          onEditingModeChange(false);
-        }
-
       } else {
-        console.log('Creating new scene');
-
-        // Transform the blueprint data for creation (SceneCreate format)
         const createData: SceneCreate = {
           organization_id: activeOrgId,
-          floorplan: {
-            corners: parsedData.floorplan?.corners || {},
-            walls: parsedData.floorplan?.walls || []
-          },
-          items: parsedData.items || []
+          floorplan: scenePayload.floorplan,
+          items: scenePayload.items,
         };
 
-        console.log('Creating scene via API:', createData);
-
-        // POST to create a new scene
         response = await ScenesService.createScene({
-          requestBody: createData
+          requestBody: createData,
         });
-
-        console.log('Scene created successfully:', response);
-
-        // Update the current UID with the new scene's UID
-        if (response.uid) {
-          onUIDChange(response.uid);
-        }
 
         showToast(
           'Scene Created Successfully!',
           `Your new scene has been saved with ID: ${response.uid}`,
           'success'
         );
-
-        // Exit editing mode after successful save
-        setIsEditingMode(false);
-        // Notify parent component about editing mode change
-        if (onEditingModeChange) {
-          onEditingModeChange(false);
-        }
       }
 
-      // Notify parent component that a scene was saved (for both create and update)
-      if (onSceneSaved && response.uid) {
-        onSceneSaved(response.uid);
+      if (response?.uid) {
+        onUIDChange(response.uid);
+        editSnapshotRef.current = JSON.stringify({
+          ...scenePayload,
+          uid: response.uid,
+        });
+        onSceneSaved?.(response.uid);
       }
 
+      setIsEditingMode(false);
+      onEditingModeChange?.(false);
+      onStateChange('DESIGN');
     } catch (error) {
       console.error('Error saving scene:', error);
       showToast(
@@ -208,6 +223,7 @@ const Viewer: React.FC = () => {
 
 
   const handleEnterEditMode = () => {
+    captureEditSnapshot();
     setIsEditingMode(true);
     onStateChange('DESIGN');
     if (onEditingModeChange) {
@@ -266,27 +282,21 @@ const Viewer: React.FC = () => {
     }
   };
 
-  /** Import a simulation scene: copy layout + non-robot items, delete old import, create new */
+  /** Import a simulation scene into Real Mode without robot items */
   const handleImportScene = async (simScene: any) => {
     setShowScenePicker(false);
     setIsImporting(true);
     try {
-      // 1. Fetch full data of the selected simulation scene
       const srcScene = await ScenesService.readScene({ sceneId: simScene.uid });
+      const filteredItems = filterOutRobotItems(srcScene.items || []);
 
-      // 2. Filter out robot items (those with a device_uid)
-      const filteredItems = (srcScene.items || []).filter(
-        (item: any) => !item.device_uid
-      );
-
-      // 3. Load directly into the viewer in-memory, keeping the current UID
-      //    (Real Mode Scene's UID) — nothing is created or saved in the backend.
       if (blueprint3d?.model) {
-        blueprint3d.model.loadSerialized(JSON.stringify({
-          uid: currentUID,           // keep Real Mode Scene UID
+        restoreScenePayload({
+          uid: currentUID,
           floorplan: srcScene.floorplan,
           items: filteredItems,
-        }));
+        });
+
         showToast(
           'Scene Imported',
           `"${simScene.label || simScene.uid.substring(0, 8)}" loaded without robots.`,
@@ -304,44 +314,39 @@ const Viewer: React.FC = () => {
 
   const handleCancelEditing = async () => {
     try {
-      // If we have a current scene UID, reload it from the server
-      if (currentUID) {
-        console.log('Canceling editing, reloading scene:', currentUID);
+      if (currentUID && await checkSceneExists(currentUID)) {
+        const sceneData = await ScenesService.readScene({ sceneId: currentUID });
+        restoreScenePayload({
+          uid: sceneData.uid,
+          floorplan: sceneData.floorplan,
+          items: sceneData.items || [],
+        });
 
-        // Check if the scene still exists
-        const exists = await checkSceneExists(currentUID);
-        if (exists) {
-          // Fetch the scene data from the API
-          const sceneData = await ScenesService.readScene({ sceneId: currentUID });
+        editSnapshotRef.current = buildSerializedScene({
+          uid: sceneData.uid,
+          floorplan: sceneData.floorplan,
+          items: sceneData.items || [],
+        });
 
-          // Transform the scene data to the format expected by Blueprint3D
-          const blueprintData = {
-            uid: sceneData.uid,
-            floorplan: sceneData.floorplan,
-            items: sceneData.items || []
-          };
-
-          // Reload the scene into the Blueprint3D viewer
-          if (blueprint3d?.model) {
-            blueprint3d.model.loadSerialized(JSON.stringify(blueprintData));
-            console.log('Scene reloaded successfully after cancel:', currentUID);
-
-            showToast(
-              'Changes Discarded',
-              'Scene has been restored to its last saved version',
-              'success'
-            );
-          }
-        } else {
-          console.warn('Scene no longer exists, cannot reload');
-          showToast(
-            'Scene Not Found',
-            'The scene no longer exists. Changes have been discarded.',
-            'error'
-          );
-        }
+        showToast(
+          'Changes Discarded',
+          'Scene has been restored to its last saved version.',
+          'success'
+        );
+      } else if (editSnapshotRef.current && blueprint3d?.model) {
+        const snapshot = JSON.parse(editSnapshotRef.current);
+        restoreScenePayload(snapshot);
+        showToast(
+          'Changes Discarded',
+          'The plan has been restored to the state it had before editing.',
+          'success'
+        );
       } else {
-        console.log('No current scene to reload');
+        showToast(
+          'Nothing to Restore',
+          'There is no saved snapshot available for this plan.',
+          'error'
+        );
       }
     } catch (error) {
       console.error('Error reloading scene after cancel:', error);
@@ -353,48 +358,11 @@ const Viewer: React.FC = () => {
     }
 
     setIsEditingMode(false);
-    // Notify parent component about editing mode change
     if (onEditingModeChange) {
       onEditingModeChange(false);
     }
-    // Return to design view when canceling editing
     onStateChange('DESIGN');
   };
-
-  useEffect(() => {
-    const loadSceneData = async () => {
-      // Solo cargamos si hay un ID y el modelo 3D está listo
-      if (currentUID && blueprint3d?.model) {
-        try {
-          console.log("Cargando nueva escena:", currentUID);
-
-          // 1. Pedimos los datos de la nueva escena a la API
-          const sceneData = await ScenesService.readScene({ sceneId: currentUID });
-
-          // 2. Preparamos el formato (por seguridad, para evitar fallos si viene vacío)
-          const formatData = {
-            floorplan: sceneData.floorplan || { corners: {}, walls: [] },
-            items: sceneData.items || [],
-            uid: sceneData.uid
-          };
-
-          // 3. Inyectamos los datos en el motor 3D
-          blueprint3d.model.loadSerialized(JSON.stringify(formatData));
-
-        } catch (error) {
-          console.error("Error al cargar la escena automática:", error);
-        }
-      } else if (!currentUID && blueprint3d?.model) {
-        // Si no hay ID (porque borraste la última), limpiamos la pantalla
-        blueprint3d.model.loadSerialized(JSON.stringify({
-          floorplan: { corners: {}, walls: [] },
-          items: []
-        }));
-      }
-    };
-
-    loadSceneData();
-  }, [currentUID, blueprint3d]);
 
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
