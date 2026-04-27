@@ -2585,6 +2585,21 @@ var BP3D;
                         var item = new ItemClass(scope.model, metadata, geometry, material, position, rotation, scale);
                         item.fixed = fixed || false;
                         item.device_uid = device_uid || null;
+
+                        // The Item mesh keeps the bounding box only for dimensions,
+                        // resizing and serialization. It must not be raycasted,
+                        // otherwise the invisible box becomes the clickable/contact area.
+                        item.raycast = function () { };
+                        item.userData = item.userData || {};
+                        item.userData.bp3dItem = item;
+
+                        model.traverse(function (child) {
+                            if (child instanceof THREE.Mesh) {
+                                child.userData = child.userData || {};
+                                child.userData.bp3dItem = item;
+                            }
+                        });
+
                         item.add(model);
 
                         scope.items.push(item);
@@ -3264,6 +3279,23 @@ var BP3D;
             var intersectedObject;
             var mouseoverObject;
             var selectedObject;
+
+            function resolveInteractionItem(object) {
+                var current = object;
+                while (current) {
+                    if (current.userData && current.userData.bp3dItem) {
+                        return current.userData.bp3dItem;
+                    }
+                    if (typeof current.clickPressed === "function" &&
+                        typeof current.setSelected === "function" &&
+                        typeof current.mouseOver === "function") {
+                        return current;
+                    }
+                    current = current.parent;
+                }
+                return null;
+            }
+
             var mouseDown = false;
             var mouseMoved = false; // has mouse moved since down click
             var rotateMouseOver = false;
@@ -3530,9 +3562,9 @@ var BP3D;
                 hud.setMouseover(false);
                 // check objects
                 var items = model.scene.getItems();
-                var intersects = scope.getIntersections(mouse, items, false, true);
+                var intersects = scope.getIntersections(mouse, items, false, true, true);
                 if (intersects.length > 0) {
-                    intersectedObject = intersects[0].object;
+                    intersectedObject = resolveInteractionItem(intersects[0].object);
                 }
                 else {
                     intersectedObject = null;

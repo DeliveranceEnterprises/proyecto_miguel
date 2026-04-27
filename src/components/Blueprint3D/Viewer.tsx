@@ -8,10 +8,12 @@ import type { SceneCreate, SceneUpdate } from '../../client/types.gen';
 import useCustomToast from '../../hooks/useCustomToast';
 
 const Viewer: React.FC = () => {
-  const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange, appState, isRealMode } = useBlueprint3D();
+  const { blueprint3d, currentUID, onUIDChange, onSceneSaved, onStateChange, onEditingModeChange, appState, isRealMode, selectedItem } = useBlueprint3D();
   const { getActiveOrganizationId } = useOrganizationContext();
   const showToast = useCustomToast();
   const [isEditingMode, setIsEditingMode] = useState(false);
+  const [objectDimensions, setObjectDimensions] = useState({ height: 0, width: 0, depth: 0 });
+  const [isSavingObject, setIsSavingObject] = useState(false);
 
   // Scene picker dropdown state
   const [showScenePicker, setShowScenePicker] = useState(false);
@@ -74,6 +76,44 @@ const Viewer: React.FC = () => {
       const meta = item?.metadata ?? item;
       return !meta?.device_uid && !meta?.deviceId;
     });
+
+
+  const roundDimension = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+  const readSelectedItemDimensions = () => {
+    if (!selectedItem) return { height: 0, width: 0, depth: 0 };
+    return {
+      height: roundDimension(Number(selectedItem.getHeight?.() ?? 0)),
+      width: roundDimension(Number(selectedItem.getWidth?.() ?? 0)),
+      depth: roundDimension(Number(selectedItem.getDepth?.() ?? 0)),
+    };
+  };
+
+  const refreshSelectedItemDimensions = () => {
+    setObjectDimensions(readSelectedItemDimensions());
+  };
+
+  const applySelectedItemDimension = (axis: 'height' | 'width' | 'depth', rawValue: string) => {
+    if (!selectedItem) return;
+
+    const nextValue = Number(rawValue);
+    if (!Number.isFinite(nextValue) || nextValue <= 0) return;
+
+    const current = readSelectedItemDimensions();
+    const next = {
+      ...current,
+      [axis]: nextValue,
+    };
+
+    selectedItem.resize?.(next.height, next.width, next.depth);
+    if (selectedItem.scene) selectedItem.scene.needsUpdate = true;
+    blueprint3d?.three?.needsUpdate?.();
+    setObjectDimensions(next);
+  };
+
+  useEffect(() => {
+    refreshSelectedItemDimensions();
+  }, [selectedItem]);
 
   // Close picker when clicking outside
   useEffect(() => {
@@ -141,10 +181,10 @@ const Viewer: React.FC = () => {
 
 
 
-  const handleSaveDesign = async () => {
+  const persistCurrentScene = async ({ exitEditing }: { exitEditing: boolean }) => {
     if (!blueprint3d?.model) {
       console.error('Blueprint3D model not available');
-      return;
+      return null;
     }
 
     const activeOrgId = getActiveOrganizationId();
@@ -155,62 +195,73 @@ const Viewer: React.FC = () => {
         'Please select an organization before saving the plan.',
         'error'
       );
-      return;
+      return null;
     }
 
+    const scenePayload = getExportedScenePayload();
+    const wasExistingScene = Boolean(currentUID) && await checkSceneExists(currentUID);
+
+    let response;
+
+    if (wasExistingScene) {
+      const updateData: SceneUpdate = {
+        floorplan: scenePayload.floorplan,
+        items: scenePayload.items,
+        organization_id: activeOrgId,
+      };
+
+      response = await ScenesService.updateScene({
+        sceneId: currentUID,
+        requestBody: updateData,
+      });
+    } else {
+      const createData: SceneCreate = {
+        organization_id: activeOrgId,
+        floorplan: scenePayload.floorplan,
+        items: scenePayload.items,
+      };
+
+      response = await ScenesService.createScene({
+        requestBody: createData,
+      });
+    }
+
+    if (response?.uid) {
+      onUIDChange(response.uid);
+      editSnapshotRef.current = JSON.stringify({
+        ...scenePayload,
+        uid: response.uid,
+      });
+      onSceneSaved?.(response.uid);
+    }
+
+    if (exitEditing) {
+      setIsEditingMode(false);
+      onEditingModeChange?.(false);
+      onStateChange('DESIGN');
+    }
+
+    return { response, wasExistingScene };
+  };
+
+  const handleSaveDesign = async () => {
     try {
-      const scenePayload = getExportedScenePayload();
-      const isExistingScene = Boolean(currentUID) && await checkSceneExists(currentUID);
+      const result = await persistCurrentScene({ exitEditing: true });
+      if (!result) return;
 
-      let response;
-
-      if (isExistingScene) {
-        const updateData: SceneUpdate = {
-          floorplan: scenePayload.floorplan,
-          items: scenePayload.items,
-          organization_id: activeOrgId,
-        };
-
-        response = await ScenesService.updateScene({
-          sceneId: currentUID,
-          requestBody: updateData,
-        });
-
+      if (result.wasExistingScene) {
         showToast(
           'Scene Updated Successfully!',
           `Your scene ${currentUID.substring(0, 8)}... has been updated`,
           'success'
         );
       } else {
-        const createData: SceneCreate = {
-          organization_id: activeOrgId,
-          floorplan: scenePayload.floorplan,
-          items: scenePayload.items,
-        };
-
-        response = await ScenesService.createScene({
-          requestBody: createData,
-        });
-
         showToast(
           'Scene Created Successfully!',
-          `Your new scene has been saved with ID: ${response.uid}`,
+          `Your new scene has been saved with ID: ${result.response.uid}`,
           'success'
         );
       }
-
-      if (response?.uid) {
-        onUIDChange(response.uid);
-        editSnapshotRef.current = JSON.stringify({
-          ...scenePayload,
-          uid: response.uid,
-        });
-        onSceneSaved?.(response.uid);
-      }
-
-      setIsEditingMode(false);
-      onEditingModeChange?.(false);
-      onStateChange('DESIGN');
     } catch (error) {
       console.error('Error saving scene:', error);
       showToast(
@@ -220,6 +271,32 @@ const Viewer: React.FC = () => {
       );
     }
   };
+
+  const handleSaveSelectedObject = async () => {
+    if (!selectedItem) return;
+    setIsSavingObject(true);
+    try {
+      const result = await persistCurrentScene({ exitEditing: false });
+      if (!result) return;
+
+      refreshSelectedItemDimensions();
+      showToast(
+        'Object Saved',
+        'The object dimensions, position, rotation and metadata have been saved.',
+        'success'
+      );
+    } catch (error) {
+      console.error('Error saving selected object:', error);
+      showToast(
+        'Object Save Failed',
+        'Could not save the selected object. Check console for details.',
+        'error'
+      );
+    } finally {
+      setIsSavingObject(false);
+    }
+  };
+
 
 
   const handleEnterEditMode = () => {
@@ -738,6 +815,7 @@ const Viewer: React.FC = () => {
           </button>
         </div>
       </div>
+      
 
       {/* Camera Controls */}
       <div id="camera-controls">

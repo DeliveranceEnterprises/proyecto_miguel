@@ -21,7 +21,7 @@ const itemCategories = [
       { name: 'Full Bed', image: 'plan3d/models/thumbnails/thumbnail_nordli-bed-frame__0159270_PE315708_S4.JPG', model: 'plan3d/models/js/ik_nordli_full.js', type: 1 },
       { name: 'Coffee Table - Wood', image: 'plan3d/models/thumbnails/thumbnail_stockholm-coffee-table__0181245_PE332924_S4.JPG', model: 'plan3d/models/js/ik-stockholmcoffee-brown.js', type: 1 },
       { name: 'Dining Table', image: 'plan3d/models/thumbnails/thumbnail_scholar-dining-table.jpg', model: 'plan3d/models/js/cb-scholartable_baked.js', type: 1 },
-      { name: 'Dining table', image: 'plan3d/models/thumbnails/thumbnail_Screen_Shot_2014-01-28_at_6.49.33_PM.png', model: 'plan3d/models/js/BlakeAvenuejoshuatreecheftable.js', type: 1 },
+      { name: 'Dining table2', image: 'plan3d/models/thumbnails/thumbnail_Screen_Shot_2014-01-28_at_6.49.33_PM.png', model: 'plan3d/models/js/BlakeAvenuejoshuatreecheftable.js', type: 1 },
     ]
   },
   {
@@ -51,6 +51,7 @@ const itemCategories = [
       { name: 'Wooden Trunk', image: 'plan3d/models/thumbnails/thumbnail_teca-storage-trunk.jpg', model: 'plan3d/models/js/cb-tecs_baked.js', type: 1 },
       { name: 'Floor Lamp', image: 'plan3d/models/thumbnails/thumbnail_ore-white.png', model: 'plan3d/models/js/ore-3legged-white_baked.js', type: 1 },
       { name: 'NYC Poster', image: 'plan3d/models/thumbnails/thumbnail_nyc2.jpg', model: 'plan3d/models/js/nyc-poster2.js', type: 2 },
+      { name: 'Poster Deliverance', image: 'plan3d/models/thumbnails/logo_deliverance.png', model: 'plan3d/models/js/cartel_deliverance.js', type: 2 },
     ]
   },
   {
@@ -75,7 +76,7 @@ const itemCategories = [
       { name: 'Cargador', image: 'plan3d/models/thumbnails/robot.png', model: 'plan3d/models/js/baul.glb', type: 1 },
       { name: 'Papelera', image: 'plan3d/models/thumbnails/thumbnail_papelera.png', model: 'plan3d/models/js/papelera.glb', type: 1 },
       { name: 'Lavabo', image: 'plan3d/models/thumbnails/thumbnail_lavabo.png', model: 'plan3d/models/js/lavabo.glb', type: 1 },
-      { name: 'Estacion_Carga', image: 'plan3d/models/thumbnails/thumbnail_estacion_carga.png', model: 'plan3d/models/js/espacion_carga.glb', type: 1 },
+      { name: 'Estacion_Carga', image: 'plan3d/models/thumbnails/thumbnail_estacion_carga.jpg', model: 'plan3d/models/js/estacion_carga.glb', type: 1 },
       { name: 'Cajas', image: 'plan3d/models/thumbnails/thumbnail_cajas.png', model: 'plan3d/models/js/cajas.glb', type: 1 },
       { name: 'Escalera', image: 'plan3d/models/thumbnails/thumbnail_escalera.png', model: 'plan3d/models/js/escalera.glb', type: 1 },
     ]

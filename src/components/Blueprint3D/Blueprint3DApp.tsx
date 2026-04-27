@@ -324,7 +324,16 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
         ) {
           const originalLoadTexture = THREE.ImageUtils.loadTexture.bind(THREE.ImageUtils);
           THREE.ImageUtils.loadTexture = function (url: string, ...rest: any[]) {
-            const fixedUrl = /^(https?:\/\/|data:|\/)/.test(url) ? url : (textureBase + url);
+            const rawUrl = String(url ?? '');
+
+            let fixedUrl = rawUrl;
+            if (!/^(https?:\/\/|data:|blob:|\/)/.test(rawUrl)) {
+              if (rawUrl.startsWith('plan3d/')) {
+                fixedUrl = '/' + rawUrl;
+              } else if (rawUrl.startsWith('models/') || rawUrl.startsWith('rooms/')) {
+                fixedUrl = textureBase + rawUrl;
+              }
+            }
             return originalLoadTexture(fixedUrl, ...rest as [any]);
           };
           THREE.ImageUtils.__wrappedByApp = true;

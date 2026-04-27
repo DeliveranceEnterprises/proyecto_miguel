@@ -32,8 +32,8 @@ import { useOrganizationContext } from "../../hooks/useOrganizationContext";
 import { createDefaultFloorplan } from "../../components/Blueprint3D/utils";
 import { OrganizationsService, ScenesService } from "../../client";
 import useCustomToast from "../../hooks/useCustomToast";
-import { useState, useRef, useEffect, type SyntheticEvent } from "react";
-import { FiTrash2, FiX } from "react-icons/fi";
+import { useState, useRef, useEffect, useCallback, type SyntheticEvent } from "react";
+import { FiSave, FiTrash2, FiX } from "react-icons/fi";
 
 export const Route = createFileRoute("/_layout/site")({
   component: Site,
@@ -193,7 +193,10 @@ function ItemEditingPanel({
   onStartFloorplanPlacement,
   isFloorplanPlacementActive,
   refreshKey,
-  onItemUpdated
+  onItemUpdated,
+  onSaveItem,
+  isSavingItem,
+  onFormFocusChange,
 }: {
   selectedItem: any;
   onClose: () => void;
@@ -201,6 +204,9 @@ function ItemEditingPanel({
   isFloorplanPlacementActive?: boolean;
   refreshKey?: number;
   onItemUpdated?: () => void;
+  onSaveItem?: () => Promise<void> | void;
+  isSavingItem?: boolean;
+  onFormFocusChange?: (focused: boolean) => void;
 }) {
   const [itemDimensions, setItemDimensions] = useState<ItemDimensionsFormValues>({
     width: "0.00",
@@ -209,7 +215,9 @@ function ItemEditingPanel({
   });
 
   const baseDimensionsRef = useRef({ width: 0, height: 0, depth: 0 });
+  const prevSelectedItemRef = useRef<any>(null);
   const [isFixed, setIsFixed] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [chargerValues, setChargerValues] = useState<ChargerEditorFormValues>(() =>
     chargerValuesToForm(getChargerEditorValues(selectedItem))
   );
@@ -219,7 +227,14 @@ function ItemEditingPanel({
   const borderColor = useColorModeValue("gray.200", "gray.600");
 
   useEffect(() => {
-    if (selectedItem) {
+    if (prevSelectedItemRef.current !== selectedItem) {
+      prevSelectedItemRef.current = selectedItem;
+      setIsDirty(false);
+    }
+  }, [selectedItem]);
+
+  useEffect(() => {
+    if (selectedItem && !isDirty) {
       const cmToM = (cm: number) => cm / 100;
 
       const dims = {
@@ -241,7 +256,7 @@ function ItemEditingPanel({
         setChargerValues(chargerValuesToForm(getChargerEditorValues(selectedItem)));
       }
     }
-  }, [selectedItem, refreshKey]);
+  }, [selectedItem, refreshKey, isDirty]);
 
   const handleDeleteItem = () => {
     if (selectedItem) selectedItem.remove();
@@ -259,6 +274,7 @@ function ItemEditingPanel({
     dimension: keyof ItemDimensionsFormValues,
     value: string
   ) => {
+    setIsDirty(true);
     setItemDimensions((prev) => ({ ...prev, [dimension]: value }));
   };
 
@@ -313,9 +329,61 @@ function ItemEditingPanel({
       height: newDims.height.toFixed(2),
       depth: newDims.depth.toFixed(2),
     });
+    setIsDirty(false);
 
     baseDimensionsRef.current = { ...newDims };
     onItemUpdated?.();
+  };
+
+  const handleResizeIndependent = () => {
+    if (!selectedItem) return;
+
+    const current = {
+      width: Number(itemDimensions.width),
+      height: Number(itemDimensions.height),
+      depth: Number(itemDimensions.depth),
+    };
+
+    if (
+      !Number.isFinite(current.width) ||
+      !Number.isFinite(current.height) ||
+      !Number.isFinite(current.depth) ||
+      current.width <= 0 ||
+      current.height <= 0 ||
+      current.depth <= 0
+    ) {
+      return;
+    }
+
+    const newDims = {
+      width: Number(current.width.toFixed(2)),
+      height: Number(current.height.toFixed(2)),
+      depth: Number(current.depth.toFixed(2)),
+    };
+
+    const mToCm = (m: number) => m * 100;
+
+    // Blueprint3D expects resize(height, width, depth) in centimeters.
+    // Here each axis is passed directly so width, height and depth can change independently.
+    selectedItem.resize(
+      mToCm(newDims.height),
+      mToCm(newDims.width),
+      mToCm(newDims.depth),
+    );
+
+    setItemDimensions({
+      width: newDims.width.toFixed(2),
+      height: newDims.height.toFixed(2),
+      depth: newDims.depth.toFixed(2),
+    });
+    setIsDirty(false);
+
+    baseDimensionsRef.current = { ...newDims };
+    onItemUpdated?.();
+  };
+
+  const handleSaveItem = async () => {
+    await onSaveItem?.();
   };
 
   const handleFixedChange = (checked: boolean) => {
@@ -330,6 +398,7 @@ function ItemEditingPanel({
     field: keyof ChargerEditorFormValues,
     value: string
   ) => {
+    setIsDirty(true);
     setChargerValues((prev) => ({
       ...prev,
       [field]: value,
@@ -340,6 +409,7 @@ function ItemEditingPanel({
     if (!selectedItem || !isChargerItem(selectedItem)) return;
     applyChargerEditorValues(selectedItem, chargerFormToValues(chargerValues));
     setChargerValues(chargerValuesToForm(getChargerEditorValues(selectedItem)));
+    setIsDirty(false);
     onItemUpdated?.();
     onClose();
   };
@@ -366,6 +436,13 @@ function ItemEditingPanel({
         onMouseDown={stopScenePointerEvent}
         onPointerDown={stopScenePointerEvent}
         onTouchStart={stopScenePointerEvent}
+        onFocusCapture={() => onFormFocusChange?.(true)}
+        onBlurCapture={(event) => {
+          const nextFocusedElement = event.relatedTarget as Node | null;
+          if (!event.currentTarget.contains(nextFocusedElement)) {
+            onFormFocusChange?.(false);
+          }
+        }}
       >
         <CardBody p={4} overflowY="auto" flex="1">
           <VStack spacing={4} align="stretch">
@@ -422,6 +499,27 @@ function ItemEditingPanel({
               onClick={handleResize}
             >
               Resize (proportional)
+            </Button>
+
+            <Button
+              colorScheme="blue"
+              variant="outline"
+              size="sm"
+              onClick={handleResizeIndependent}
+            >
+              Apply dimensions (independent)
+            </Button>
+
+            <Button
+              leftIcon={<FiSave />}
+              colorScheme="green"
+              variant="solid"
+              size="sm"
+              onClick={handleSaveItem}
+              isLoading={isSavingItem}
+              loadingText="Guardando"
+            >
+              Guardar objeto
             </Button>
 
             <FormControl display="flex" alignItems="center">
@@ -689,6 +787,7 @@ function Site() {
   const [openRealPanel, setOpenRealPanel] = useState<RealModePanel>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedItemRevision, setSelectedItemRevision] = useState(0);
+  const [isSavingSelectedItem, setIsSavingSelectedItem] = useState(false);
   const [isFloorplanPlacementActive, setIsFloorplanPlacementActive] = useState(false);
   const [selectedWall, setSelectedWall] = useState<any>(null);
   const [selectedFloor, setSelectedFloor] = useState<any>(null);
@@ -956,7 +1055,105 @@ function Site() {
     }
   };
 
-  const handleEditingModeChange = (editingMode: boolean) => {
+
+  const buildScenePayloadFromViewer = () => {
+    const blueprint = blueprint3DRef.current?.getBlueprint3D();
+    const raw = blueprint?.model?.exportSerialized?.();
+
+    if (!raw) {
+      throw new Error("Blueprint3D export is not available");
+    }
+
+    const parsedData = JSON.parse(raw);
+
+    return {
+      uid: parsedData?.uid || selectedScene || "",
+      floorplan: {
+        corners: parsedData?.floorplan?.corners || {},
+        walls: parsedData?.floorplan?.walls || [],
+        wallTextures: parsedData?.floorplan?.wallTextures || [],
+        floorTextures: parsedData?.floorplan?.floorTextures || {},
+        newFloorTextures: parsedData?.floorplan?.newFloorTextures || {},
+      },
+      items: parsedData?.items || [],
+    };
+  };
+
+  const handleSaveSelectedItem = async () => {
+    const activeOrgId = activeOrganizationContext?.uid;
+
+    if (!activeOrgId) {
+      showToast(
+        "Organization Required",
+        "Please select an organization before saving the object.",
+        "error"
+      );
+      return;
+    }
+
+    setIsSavingSelectedItem(true);
+
+    try {
+      const scenePayload = buildScenePayloadFromViewer();
+      const sceneId = scenePayload.uid || selectedScene || undefined;
+      let response;
+
+      if (sceneId) {
+        try {
+          await ScenesService.readScene({ sceneId });
+          response = await ScenesService.updateScene({
+            sceneId,
+            requestBody: {
+              floorplan: scenePayload.floorplan,
+              items: scenePayload.items,
+              organization_id: activeOrgId,
+            },
+          });
+        } catch (_error) {
+          response = await ScenesService.createScene({
+            requestBody: {
+              organization_id: activeOrgId,
+              floorplan: scenePayload.floorplan,
+              items: scenePayload.items,
+            },
+          });
+        }
+      } else {
+        response = await ScenesService.createScene({
+          requestBody: {
+            organization_id: activeOrgId,
+            floorplan: scenePayload.floorplan,
+            items: scenePayload.items,
+          },
+        });
+      }
+
+      if (response?.uid) {
+        setSelectedScene(response.uid);
+        setHasLoadedScene(true);
+      }
+
+      scenesListRef.current?.refreshScenes?.();
+      setSelectedItemRevision((value) => value + 1);
+
+      showToast(
+        "Objeto guardado",
+        "El objeto seleccionado se ha guardado con sus dimensiones, posición y rotación actuales.",
+        "success"
+      );
+    } catch (error) {
+      console.error("Error saving selected item:", error);
+      showToast(
+        "Save Failed",
+        "Failed to save the selected object. Please check the console for details or try again.",
+        "error"
+      );
+    } finally {
+      setIsSavingSelectedItem(false);
+    }
+  };
+
+  const handleEditingModeChange = useCallback((editingMode: boolean) => {
     setIsEditingMode(editingMode);
 
     const shouldEnableController = Boolean(
@@ -974,7 +1171,7 @@ function Site() {
         blueprint3DRef.current.clearSelections();
       }
     }
-  };
+  }, [isFloorplanPlacementActive]);
 
   useEffect(() => {
     const shouldEnableController = Boolean(
@@ -983,21 +1180,28 @@ function Site() {
     blueprint3DRef.current?.setControllerEnabled(shouldEnableController);
   }, [isEditingMode, isFloorplanPlacementActive, selectedScene]);
 
-  const handleSelectedItemChange = (item: any) => {
+  const handleFormFocusChange = useCallback((focused: boolean) => {
+    const shouldEnableController = Boolean(
+      !focused && isEditingMode && !isFloorplanPlacementActive
+    );
+    blueprint3DRef.current?.setControllerEnabled(shouldEnableController);
+  }, [isEditingMode, isFloorplanPlacementActive]);
+
+  const handleSelectedItemChange = useCallback((item: any) => {
     setSelectedItem(item);
     setSelectedItemRevision((value) => value + 1);
     if (!item) {
       setIsFloorplanPlacementActive(false);
     }
-  };
+  }, []);
 
-  const handleSelectedWallChange = (wall: any) => {
+  const handleSelectedWallChange = useCallback((wall: any) => {
     setSelectedWall(wall);
-  };
+  }, []);
 
-  const handleSelectedFloorChange = (floor: any) => {
+  const handleSelectedFloorChange = useCallback((floor: any) => {
     setSelectedFloor(floor);
-  };
+  }, []);
 
   const cancelFloorplanPlacement = (returnToDesign = true) => {
     setIsFloorplanPlacementActive(false);
@@ -1297,6 +1501,9 @@ function Site() {
                       refreshKey={selectedItemRevision}
                       isFloorplanPlacementActive={isFloorplanPlacementActive}
                       onItemUpdated={() => setSelectedItemRevision((value) => value + 1)}
+                      onSaveItem={handleSaveSelectedItem}
+                      isSavingItem={isSavingSelectedItem}
+                      onFormFocusChange={handleFormFocusChange}
                       onStartFloorplanPlacement={handleStartFloorplanPlacement}
                       onClose={() => {
                         cancelFloorplanPlacement(true);

@@ -9,6 +9,7 @@ import { DevicesService, TasksService } from '../../client';
 import type { DevicePublic, TaskCreate, Waypoint } from '../../client';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 import { ScenesService } from '../../client';
+import { rotateItemTowardsMovement } from '../../utils/robotOrientation';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -459,6 +460,10 @@ const AddTasks: React.FC = () => {
       const dist = delta.length();
       const step = 120 * dt;
 
+      if (dist > 0) {
+        rotateItemTowardsMovement(deviceItem, delta.x, delta.z, 0.001);
+      }
+
       if (dist <= step) {
         pos.x = target.x; pos.z = target.z;
         idx++;
@@ -466,7 +471,6 @@ const AddTasks: React.FC = () => {
         delta.normalize();
         pos.x += delta.x * step;
         pos.z += delta.z * step;
-        deviceItem.rotation.y = Math.atan2(delta.x, delta.z);
       }
 
       // Update coordinates in API every ~30 frames (~0.5 s at 60fps)
