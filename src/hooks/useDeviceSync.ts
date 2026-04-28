@@ -1,9 +1,32 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import { fetchDeviceStatus } from '../utils/deviceStatus';
-import { scheduleSmoothRobotMove, tickSmoothRobotMoves, type RobotPositionSampleRegistry, type SmoothRobotMoveRegistry } from '../utils/smoothRobotMovement';
-import { clearAllRobotTargetPreviews, clearRobotTargetPreview, showRobotTargetPreview, updateRobotTargetPreview, type RobotTargetPreviewRegistry } from '../utils/robotTargetPreview';
+import {
+  scheduleSmoothRobotMove,
+  tickSmoothRobotMoves,
+  type RobotPathPoint,
+  type RobotPositionSampleRegistry,
+  type SmoothRobotMoveRegistry,
+} from '../utils/smoothRobotMovement';
+import {
+  buildRobotTargetPreviewPath,
+  clearAllRobotTargetPreviews,
+  clearRobotTargetPreview,
+  showRobotTargetPreview,
+  updateRobotTargetPreview,
+  type RobotTargetPreviewRegistry,
+} from '../utils/robotTargetPreview';
 
 const POLL_INTERVAL = 500;
+
+const ROBOT_PATH_OPTIONS = {
+  robotRadiusCm: 35,
+  obstaclePaddingCm: 15,
+  gridSizeCm: 25,
+  boundsPaddingCm: 150,
+  maxGridNodes: 70000,
+  includeDevices: true,
+  includeRobots: false,
+};
 
 function getItemDeviceUid(item: any): string {
   return String(
@@ -13,6 +36,37 @@ function getItemDeviceUid(item: any): string {
     item?.deviceId ??
     ''
   ).trim();
+}
+
+function buildDirectPath(item: any, targetX: number, targetZ: number): RobotPathPoint[] {
+  return [
+    {
+      x: Number(item?.position?.x),
+      z: Number(item?.position?.z),
+    },
+    { x: targetX, z: targetZ },
+  ].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.z));
+}
+
+function buildNavigationPath(args: {
+  blueprint3d: any;
+  item: any;
+  targetX: number;
+  targetZ: number;
+}): RobotPathPoint[] {
+  const plannedPath = buildRobotTargetPreviewPath({
+    blueprint3d: args.blueprint3d,
+    item: args.item,
+    targetX: args.targetX,
+    targetZ: args.targetZ,
+    options: ROBOT_PATH_OPTIONS,
+  });
+
+  const path = plannedPath && plannedPath.length >= 2
+    ? plannedPath
+    : buildDirectPath(args.item, args.targetX, args.targetZ);
+
+  return path.length >= 2 ? path : [{ x: args.targetX, z: args.targetZ }, { x: args.targetX, z: args.targetZ }];
 }
 
 export function useDeviceSync(
@@ -42,6 +96,7 @@ export function useDeviceSync(
             currentZ: frame.currentZ,
             targetX: frame.targetX,
             targetZ: frame.targetZ,
+            path: frame.remainingPath,
             previews: targetPreviewsRef.current,
           });
         },
@@ -101,6 +156,14 @@ export function useDeviceSync(
           const newX: number = Number(statusData.coordinates_x);
           const newY: number = Number(statusData.coordinates_y);
           const newStatus: string = statusData?.status ?? '';
+          if (!Number.isFinite(newX) || !Number.isFinite(newY)) return;
+
+          const navigationPath = buildNavigationPath({
+            blueprint3d,
+            item,
+            targetX: newX,
+            targetZ: newY,
+          });
 
           const scheduledMove = scheduleSmoothRobotMove({
             uid,
@@ -116,6 +179,7 @@ export function useDeviceSync(
               maxDurationMs: 1200,
               minMovement: 0.001,
               snapFirstUpdate: true,
+              path: navigationPath,
             },
           });
 
@@ -126,6 +190,7 @@ export function useDeviceSync(
               item,
               targetX: newX,
               targetZ: newY,
+              path: navigationPath,
               previews: targetPreviewsRef.current,
             });
             ensureSmoothMovementLoop();

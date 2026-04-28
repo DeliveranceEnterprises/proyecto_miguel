@@ -5,6 +5,6 @@ export { default as Floorplanner } from './Floorplanner';
 export { default as AddItems } from './AddItems';
 export { useBlueprint3D } from './Blueprint3DApp';
 export { Blueprint3DContext } from './Blueprint3DApp';
-export { generateUID, ensureBlueprintUID } from './utils';
+export { generateUID, ensureBlueprintUID } from '../../utils/utils';
 
 

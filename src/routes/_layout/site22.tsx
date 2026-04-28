@@ -27,7 +27,7 @@ import Blueprint3DApp, { Blueprint3DAppRef } from "../../components/Blueprint3D/
 import ScenesList from "../../components/Blueprint3D/ScenesList";
 import "../../components/Blueprint3D/Blueprint3DApp.css";
 import { useOrganizationContext } from "../../hooks/useOrganizationContext";
-import { createDefaultFloorplan } from "../../components/Blueprint3D/utils";
+import { createDefaultFloorplan } from "../../utils/utils";
 import { ScenesService } from "../../client";
 import useCustomToast from "../../hooks/useCustomToast";
 import { useState, useRef, useEffect } from "react";

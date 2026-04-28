@@ -10,6 +10,7 @@ import type { DevicePublic, TaskPublic } from '../../client';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 import { ScenesService } from '../../client';
 import { rotateItemTowardsMovement } from '../../utils/robotOrientation';
+import { buildTaskObjectAvoidanceRoute, type TaskRoutePoint } from '../../utils/taskWaypointPathPlanning';
 
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -18,6 +19,19 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 const STATUS_COLORS: Record<string, string> = {
     Running: '#38A169', Scheduled: '#2B6CB0', Completed: '#718096', Failed: '#E53E3E',
+};
+
+const TASK_NAVIGATION_OPTIONS = {
+    robotRadiusCm: 35,
+    obstaclePaddingCm: 15,
+    gridSizeCm: 25,
+    boundsPaddingCm: 150,
+    maxGridNodes: 70000,
+    includeDevices: false,
+    includeRobots: false,
+    simplifyPath: true,
+    includeCurrentPosition: true,
+    fallbackToDirect: true,
 };
 
 function fmtDate(iso: string): string {
@@ -185,7 +199,7 @@ const TaskList: React.FC = () => {
         }
     };
 
-    const drawPath = (task: TaskPublic) => {
+    const drawPath = (task: TaskPublic, navigationPath?: TaskRoutePoint[]) => {
         const THREE = (window as any).THREE;
         if (!THREE || !blueprint3d?.model?.scene) return;
         const s3 = (blueprint3d.model.scene as any).getScene?.();
@@ -201,9 +215,14 @@ const TaskList: React.FC = () => {
             m.name = `tl_wp_${i}`;
             group.add(m);
         });
-        if (task.waypoints.length >= 2) {
+
+        const routePoints = navigationPath && navigationPath.length >= 2
+            ? navigationPath
+            : task.waypoints.map(wp => ({ x: wp.coordinates_x, z: wp.coordinates_y }));
+
+        if (routePoints.length >= 2) {
             const geom = new THREE.Geometry();
-            task.waypoints.forEach(wp => geom.vertices.push(new THREE.Vector3(wp.coordinates_x, 5, wp.coordinates_y)));
+            routePoints.forEach(point => geom.vertices.push(new THREE.Vector3(point.x, 5, point.z)));
             group.add(new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0x3182CE, linewidth: 2 })));
         }
         s3.add(group);
@@ -239,9 +258,20 @@ const TaskList: React.FC = () => {
             return;
         }
 
-        drawPath(task);
+        const route = buildTaskObjectAvoidanceRoute({
+            blueprint3d,
+            item: deviceItem,
+            waypoints: task.waypoints,
+            options: TASK_NAVIGATION_OPTIONS,
+        });
+        if (route.warnings.length > 0) {
+            console.warn('[TaskList] A* task route warnings:', route.warnings);
+        }
+
+        drawPath(task, route.path);
         const y = Number(deviceItem.position?.y ?? 0);
-        const pts = task.waypoints.map(wp => new THREE.Vector3(wp.coordinates_x, y, wp.coordinates_y));
+        const pts = (route.path.length > 0 ? route.path : task.waypoints.map(wp => ({ x: wp.coordinates_x, z: wp.coordinates_y })))
+            .map(point => new THREE.Vector3(point.x, y, point.z));
         let idx = 0;
         let frameCount = 0;
         const deviceUid = device.uid;

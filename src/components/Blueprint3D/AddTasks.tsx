@@ -10,6 +10,7 @@ import type { DevicePublic, TaskCreate, Waypoint } from '../../client';
 import { useOrganizationContext } from '../../hooks/useOrganizationContext';
 import { ScenesService } from '../../client';
 import { rotateItemTowardsMovement } from '../../utils/robotOrientation';
+import { buildTaskObjectAvoidanceRoute, type TaskRoutePoint } from '../../utils/taskWaypointPathPlanning';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -19,6 +20,19 @@ const TASK_STATUSES = ['Scheduled', 'Running'];
 
 const CATEGORY_COLORS: Record<string, string> = {
   robot: '#3182CE', iot: '#38A169', meter: '#DD6B20', sensor: '#805AD5',
+};
+
+const TASK_NAVIGATION_OPTIONS = {
+  robotRadiusCm: 35,
+  obstaclePaddingCm: 15,
+  gridSizeCm: 25,
+  boundsPaddingCm: 150,
+  maxGridNodes: 70000,
+  includeDevices: false,
+  includeRobots: false,
+  simplifyPath: true,
+  includeCurrentPosition: true,
+  fallbackToDirect: true,
 };
 
 function parseHashParams(url?: string | null): Record<string, string> {
@@ -199,6 +213,33 @@ const AddTasks: React.FC = () => {
     } catch { /* ignore */ }
   };
 
+
+  const getSelectedDeviceItem = (): any | null => {
+    if (!blueprint3d?.model?.scene || !selectedDevice) return null;
+    const items = (blueprint3d.model.scene as any).getItems?.() ?? [];
+    return findDeviceItemInScene(items as any[], selectedDevice) ?? null;
+  };
+
+  const buildCurrentTaskNavigationPath = (wps: Waypoint[]): TaskRoutePoint[] => {
+    const deviceItem = getSelectedDeviceItem();
+    if (!deviceItem || wps.length === 0) {
+      return wps.map((wp) => ({ x: wp.coordinates_x, z: wp.coordinates_y }));
+    }
+
+    const route = buildTaskObjectAvoidanceRoute({
+      blueprint3d,
+      item: deviceItem,
+      waypoints: wps,
+      options: TASK_NAVIGATION_OPTIONS,
+    });
+
+    if (route.warnings.length > 0) {
+      console.warn('[AddTasks] A* task route warnings:', route.warnings);
+    }
+
+    return route.path.length > 0 ? route.path : wps.map((wp) => ({ x: wp.coordinates_x, z: wp.coordinates_y }));
+  };
+
   const redrawPath = (wps: Waypoint[]) => {
     const THREE = (window as any).THREE;
     if (!THREE) return;
@@ -217,14 +258,15 @@ const AddTasks: React.FC = () => {
       group.add(mesh);
     });
 
-    if (wps.length >= 2) {
+    const routePoints = buildCurrentTaskNavigationPath(wps);
+    if (routePoints.length >= 2) {
       const lineGeom = new THREE.Geometry();
-      wps.forEach((wp: Waypoint) => {
-        lineGeom.vertices.push(new THREE.Vector3(wp.coordinates_x, 5, wp.coordinates_y));
+      routePoints.forEach((point: TaskRoutePoint) => {
+        lineGeom.vertices.push(new THREE.Vector3(point.x, 5, point.z));
       });
       const lineMat = new THREE.LineBasicMaterial({ color: 0x2B6CB0, linewidth: 2 });
       const line = new THREE.Line(lineGeom, lineMat);
-      line.name = 'wp_line';
+      line.name = 'wp_line_astar';
       group.add(line);
     }
 
@@ -236,7 +278,7 @@ const AddTasks: React.FC = () => {
   useEffect(() => {
     if (step === 'create-task') redrawPath(waypoints);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waypoints, step]);
+  }, [waypoints, step, selectedDevice, blueprint3d]);
 
   // ── Waypoint picker ───────────────────────────────────────────────────────
   //
@@ -423,8 +465,19 @@ const AddTasks: React.FC = () => {
       return;
     }
 
+    const route = buildTaskObjectAvoidanceRoute({
+      blueprint3d,
+      item: deviceItem,
+      waypoints,
+      options: TASK_NAVIGATION_OPTIONS,
+    });
+    if (route.warnings.length > 0) {
+      console.warn('[AddTasks] A* task route warnings:', route.warnings);
+    }
+
     const y = Number(deviceItem.position?.y ?? 0);
-    const points = waypoints.map(wp => new THREE.Vector3(wp.coordinates_x, y, wp.coordinates_y));
+    const points = (route.path.length > 0 ? route.path : waypoints.map(wp => ({ x: wp.coordinates_x, z: wp.coordinates_y })))
+      .map(point => new THREE.Vector3(point.x, y, point.z));
     let idx = 0;
     let frameCount = 0;
     const deviceUid = selectedDevice.uid;

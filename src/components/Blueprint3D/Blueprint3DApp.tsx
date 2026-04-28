@@ -10,7 +10,7 @@ import AddDevices from './AddDevices';
 import AddTasks from './AddTasks';
 import TaskList from './TaskList';
 import { useDeviceSync } from '../../hooks/useDeviceSync';
-import { generateUID } from './utils';
+import { generateUID } from '../../utils/utils';
 
 // Declare global window interface
 declare global {
@@ -471,7 +471,11 @@ const Blueprint3DApp = React.forwardRef<Blueprint3DAppRef, Blueprint3DAppProps>(
     }
   };
 
-  const handleItemSelect = (item: any) => setSelectedItem(item);
+  const handleItemSelect = (item: any) => {
+    setSelectedItem(item);
+    setSelectedWall(null);
+    setSelectedFloor(null);
+  };
   const handleItemUnselect = () => setSelectedItem(null);
   const handleLoadingChange = (loading: boolean) => setIsLoading(loading);
   const handleWallSelect = (wall: any) => {

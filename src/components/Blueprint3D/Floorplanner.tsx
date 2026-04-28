@@ -1,17 +1,106 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FiMove, FiEdit2, FiTrash2, FiCheck } from 'react-icons/fi';
 import { useBlueprint3D } from './Blueprint3DApp';
+import {
+  clearObjectFootprintsOverlay,
+  drawObjectFootprintsOverlay,
+  removeObjectFootprintsOverlay,
+} from '../../utils/floorplanFootprintOverlay';
+import type { FootprintPoint, SceneItemFootprint } from '../../utils/itemFootprints';
+
+const pointInPolygon = (point: FootprintPoint, polygon: FootprintPoint[]) => {
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const pi = polygon[i];
+    const pj = polygon[j];
+
+    const intersects =
+      pi.z > point.z !== pj.z > point.z &&
+      point.x < ((pj.x - pi.x) * (point.z - pi.z)) / ((pj.z - pi.z) || 1) + pi.x;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+};
+
+const eventToFloorplanPoint = (
+  blueprint3d: any,
+  canvas: HTMLCanvasElement,
+  event: MouseEvent
+): FootprintPoint | null => {
+  const floorplanner = blueprint3d?.floorplanner;
+  if (!floorplanner) return null;
+
+  const rect = canvas.getBoundingClientRect();
+  const cmPerPixel = Number(floorplanner.cmPerPixel) || 1;
+  const originX = Number(floorplanner.originX) || 0;
+  const originY = Number(floorplanner.originY) || 0;
+
+  return {
+    x: (event.clientX - rect.left) * cmPerPixel + originX * cmPerPixel,
+    z: (event.clientY - rect.top) * cmPerPixel + originY * cmPerPixel,
+  };
+};
 
 const Floorplanner: React.FC = () => {
-  const { blueprint3d, onStateChange } = useBlueprint3D();
+  const {
+    blueprint3d,
+    onStateChange,
+    onItemSelect,
+    onItemUnselect,
+  } = useBlueprint3D();
   const [currentMode, setCurrentMode] = useState('MOVE');
   const [showDrawHint, setShowDrawHint] = useState(false);
+  const [showObjectFootprints, setShowObjectFootprints] = useState(false);
+  const [objectFootprintCount, setObjectFootprintCount] = useState(0);
+  const [selectedFootprint, setSelectedFootprint] = useState<SceneItemFootprint | null>(null);
+  const overlayRafRef = useRef<number | null>(null);
+  const scheduleObjectOverlayDrawRef = useRef<() => void>(() => {});
+  const footprintsRef = useRef<SceneItemFootprint[]>([]);
+
+  const drawObjectOverlay = useCallback(() => {
+    if (!blueprint3d) return;
+
+    const footprints = drawObjectFootprintsOverlay(blueprint3d, {
+      visible: showObjectFootprints,
+      includeLabels: false,
+      selectedFootprintId: selectedFootprint?.id ?? null,
+      includeDevices: true,
+      includeRobots: false,
+    });
+
+    footprintsRef.current = footprints;
+    setObjectFootprintCount(footprints.length);
+  }, [blueprint3d, showObjectFootprints, selectedFootprint?.id]);
+
+  const scheduleObjectOverlayDraw = useCallback(() => {
+    if (overlayRafRef.current !== null) {
+      window.cancelAnimationFrame(overlayRafRef.current);
+    }
+
+    overlayRafRef.current = window.requestAnimationFrame(() => {
+      overlayRafRef.current = null;
+      drawObjectOverlay();
+    });
+  }, [drawObjectOverlay]);
+
+  useEffect(() => {
+    scheduleObjectOverlayDrawRef.current = scheduleObjectOverlayDraw;
+  }, [scheduleObjectOverlayDraw]);
+
+  useEffect(() => {
+    if (showObjectFootprints) {
+      scheduleObjectOverlayDraw();
+    }
+  }, [scheduleObjectOverlayDraw, selectedFootprint?.id, showObjectFootprints]);
 
   useEffect(() => {
     if (blueprint3d?.floorplanner && typeof (window as any).BP3D !== 'undefined') {
       const BP3D = (window as any).BP3D;
       // Set up mode change callbacks like the original
-      blueprint3d.floorplanner.modeResetCallbacks.add((mode: any) => {
+      const handleModeReset = (mode: any) => {
         if (mode === BP3D.Floorplanner.floorplannerModes.MOVE) {
           setCurrentMode('MOVE');
           setShowDrawHint(false);
@@ -23,22 +112,127 @@ const Floorplanner: React.FC = () => {
           setCurrentMode('DELETE');
           setShowDrawHint(false);
         }
-      });
+
+        scheduleObjectOverlayDrawRef.current();
+      };
+
+      blueprint3d.floorplanner.modeResetCallbacks.add(handleModeReset);
 
       // Set up window resize handler
       const handleResize = () => {
         handleWindowResize();
+        scheduleObjectOverlayDrawRef.current();
       };
       window.addEventListener('resize', handleResize);
 
       // Initial resize
       handleWindowResize();
+      scheduleObjectOverlayDrawRef.current();
 
       return () => {
         window.removeEventListener('resize', handleResize);
+        blueprint3d.floorplanner.modeResetCallbacks?.remove?.(handleModeReset);
       };
     }
   }, [blueprint3d]);
+
+  useEffect(() => {
+    if (!blueprint3d) {
+      clearObjectFootprintsOverlay();
+      setObjectFootprintCount(0);
+      setSelectedFootprint(null);
+      footprintsRef.current = [];
+      return;
+    }
+
+    if (!showObjectFootprints) {
+      clearObjectFootprintsOverlay();
+      setObjectFootprintCount(0);
+      setSelectedFootprint(null);
+      footprintsRef.current = [];
+      return;
+    }
+
+    const canvas = document.getElementById('floorplanner-canvas');
+    const scene = blueprint3d.model?.scene as any;
+
+    const scheduleDrawAfterFloorplannerUpdate = () => {
+      scheduleObjectOverlayDraw();
+    };
+
+    scheduleObjectOverlayDraw();
+
+    canvas?.addEventListener('mousedown', scheduleDrawAfterFloorplannerUpdate);
+    canvas?.addEventListener('mousemove', scheduleDrawAfterFloorplannerUpdate);
+    canvas?.addEventListener('mouseup', scheduleDrawAfterFloorplannerUpdate);
+    canvas?.addEventListener('mouseleave', scheduleDrawAfterFloorplannerUpdate);
+    canvas?.addEventListener('wheel', scheduleDrawAfterFloorplannerUpdate);
+
+    scene?.itemLoadedCallbacks?.add?.(scheduleDrawAfterFloorplannerUpdate);
+    scene?.itemLoadingCallbacks?.add?.(scheduleDrawAfterFloorplannerUpdate);
+
+    return () => {
+      canvas?.removeEventListener('mousedown', scheduleDrawAfterFloorplannerUpdate);
+      canvas?.removeEventListener('mousemove', scheduleDrawAfterFloorplannerUpdate);
+      canvas?.removeEventListener('mouseup', scheduleDrawAfterFloorplannerUpdate);
+      canvas?.removeEventListener('mouseleave', scheduleDrawAfterFloorplannerUpdate);
+      canvas?.removeEventListener('wheel', scheduleDrawAfterFloorplannerUpdate);
+
+      scene?.itemLoadedCallbacks?.remove?.(scheduleDrawAfterFloorplannerUpdate);
+      scene?.itemLoadingCallbacks?.remove?.(scheduleDrawAfterFloorplannerUpdate);
+
+      if (overlayRafRef.current !== null) {
+        window.cancelAnimationFrame(overlayRafRef.current);
+        overlayRafRef.current = null;
+      }
+    };
+  }, [blueprint3d, scheduleObjectOverlayDraw, showObjectFootprints]);
+
+  useEffect(() => {
+    if (!blueprint3d || !showObjectFootprints || currentMode !== 'MOVE') return;
+
+    const canvas = document.getElementById('floorplanner-canvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+
+    const handleClick = (event: MouseEvent) => {
+      const point = eventToFloorplanPoint(blueprint3d, canvas, event);
+      if (!point) return;
+
+      const hit = footprintsRef.current
+        .filter((footprint) => pointInPolygon(point, footprint.points))
+        .sort((a, b) => a.areaCm2 - b.areaCm2)[0] ?? null;
+
+      if (!hit) {
+        setSelectedFootprint(null);
+        onItemUnselect();
+        scheduleObjectOverlayDraw();
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      setSelectedFootprint(hit);
+      onItemSelect(hit.item);
+      scheduleObjectOverlayDraw();
+    };
+
+    canvas.addEventListener('click', handleClick);
+
+    return () => {
+      canvas.removeEventListener('click', handleClick);
+    };
+  }, [blueprint3d, currentMode, onItemSelect, onItemUnselect, scheduleObjectOverlayDraw, showObjectFootprints]);
+
+  useEffect(() => {
+    return () => {
+      if (overlayRafRef.current !== null) {
+        window.cancelAnimationFrame(overlayRafRef.current);
+        overlayRafRef.current = null;
+      }
+      removeObjectFootprintsOverlay();
+    };
+  }, []);
 
   const handleWindowResize = () => {
     if (blueprint3d?.floorplanner) {
@@ -70,6 +264,7 @@ const Floorplanner: React.FC = () => {
           bp3dMode = BP3D.Floorplanner.floorplannerModes.MOVE;
       }
       blueprint3d.floorplanner.setMode(bp3dMode);
+      scheduleObjectOverlayDraw();
     }
   };
 
@@ -78,6 +273,17 @@ const Floorplanner: React.FC = () => {
       blueprint3d.floorplanner.reset();
     }
     onStateChange('DESIGN');
+  };
+
+  const handleObjectFootprintsToggle = () => {
+    setShowObjectFootprints((current) => {
+      const next = !current;
+      if (!next) {
+        setSelectedFootprint(null);
+        onItemUnselect();
+      }
+      return next;
+    });
   };
 
   const getButtonStyle = (isActive: boolean) => ({
@@ -101,6 +307,45 @@ const Floorplanner: React.FC = () => {
     transform: isActive ? 'none' : 'translateY(-1px)',
     boxShadow: isActive ? '0 1px 3px rgba(0, 0, 0, 0.1)' : '0 4px 8px rgba(0, 0, 0, 0.15)'
   });
+
+  const objectFootprintsToggleStyle = {
+    backgroundColor: '#FFFFFF',
+    color: '#1A202C',
+    border: '1px solid #E2E8F0',
+    borderRadius: '999px',
+    padding: '6px 12px 6px 8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    marginLeft: '4px',
+  } as React.CSSProperties;
+
+  const sliderTrackStyle = {
+    width: '36px',
+    height: '20px',
+    borderRadius: '999px',
+    backgroundColor: showObjectFootprints ? '#3182CE' : '#CBD5E0',
+    position: 'relative',
+    transition: 'background-color 0.2s ease',
+    flex: '0 0 auto',
+  } as React.CSSProperties;
+
+  const sliderKnobStyle = {
+    position: 'absolute',
+    top: '2px',
+    left: showObjectFootprints ? '18px' : '2px',
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    backgroundColor: '#FFFFFF',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.25)',
+    transition: 'left 0.2s ease',
+  } as React.CSSProperties;
 
   return (
     <>
@@ -161,6 +406,32 @@ const Floorplanner: React.FC = () => {
           <FiTrash2 style={{ marginRight: '6px' }} />
           Delete Walls
         </button>
+
+        <button
+          id="toggle-object-footprints"
+          type="button"
+          aria-pressed={showObjectFootprints}
+          onClick={handleObjectFootprintsToggle}
+          style={objectFootprintsToggleStyle}
+          title="Mostrar u ocultar la superficie ocupada por los objetos del plano"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+          }}
+        >
+          <span style={sliderTrackStyle}>
+            <span style={sliderKnobStyle} />
+          </span>
+          <span>
+            {showObjectFootprints
+              ? `Objetos visibles${objectFootprintCount > 0 ? ` (${objectFootprintCount})` : ''}`
+              : 'Mostrar objetos'}
+          </span>
+        </button>
         
         <div style={{ marginLeft: 'auto' }}>
           <button 
@@ -214,5 +485,3 @@ const Floorplanner: React.FC = () => {
 };
 
 export default Floorplanner;
-
-

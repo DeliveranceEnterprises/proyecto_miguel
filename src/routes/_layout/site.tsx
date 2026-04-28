@@ -19,7 +19,8 @@ import {
   FormControl,
   FormLabel,
   Divider,
-  IconButton
+  IconButton,
+  Select
 } from "@chakra-ui/react";
 
 import { createFileRoute } from "@tanstack/react-router";
@@ -29,11 +30,16 @@ import RobotInfoPanel from "../../components/Blueprint3D/RobotInfoPanel";
 import PredictionPanel from "../../components/Blueprint3D/PredictionPanel";
 import "../../components/Blueprint3D/Blueprint3DApp.css";
 import { useOrganizationContext } from "../../hooks/useOrganizationContext";
-import { createDefaultFloorplan } from "../../components/Blueprint3D/utils";
+import { createDefaultFloorplan } from "../../utils/utils";
 import { OrganizationsService, ScenesService } from "../../client";
 import useCustomToast from "../../hooks/useCustomToast";
 import { useState, useRef, useEffect, useCallback, type SyntheticEvent } from "react";
 import { FiSave, FiTrash2, FiX } from "react-icons/fi";
+import {
+  applyWallRelativePlacement,
+  getCurrentWallRelativePlacement,
+  getWallPlacementOptions,
+} from "../../utils/floorplanWallPositioning";
 
 export const Route = createFileRoute("/_layout/site")({
   component: Site,
@@ -71,6 +77,12 @@ type ItemDimensionsFormValues = {
   width: string;
   height: string;
   depth: string;
+};
+
+type WallPlacementFormValues = {
+  wallId: string;
+  alongM: string;
+  offsetM: string;
 };
 
 const roundTo = (value: number, decimals = 3) => Number(Number(value || 0).toFixed(decimals));
@@ -197,6 +209,7 @@ function ItemEditingPanel({
   onSaveItem,
   isSavingItem,
   onFormFocusChange,
+  getBlueprint3D,
 }: {
   selectedItem: any;
   onClose: () => void;
@@ -207,6 +220,7 @@ function ItemEditingPanel({
   onSaveItem?: () => Promise<void> | void;
   isSavingItem?: boolean;
   onFormFocusChange?: (focused: boolean) => void;
+  getBlueprint3D?: () => any;
 }) {
   const [itemDimensions, setItemDimensions] = useState<ItemDimensionsFormValues>({
     width: "0.00",
@@ -221,10 +235,16 @@ function ItemEditingPanel({
   const [chargerValues, setChargerValues] = useState<ChargerEditorFormValues>(() =>
     chargerValuesToForm(getChargerEditorValues(selectedItem))
   );
+  const [wallPlacement, setWallPlacement] = useState<WallPlacementFormValues>({
+    wallId: "",
+    alongM: "0.00",
+    offsetM: "0.00",
+  });
 
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
   const borderColor = useColorModeValue("gray.200", "gray.600");
+  const wallOptions = getWallPlacementOptions(getBlueprint3D?.());
 
   useEffect(() => {
     if (prevSelectedItemRef.current !== selectedItem) {
@@ -254,6 +274,20 @@ function ItemEditingPanel({
 
       if (isChargerItem(selectedItem)) {
         setChargerValues(chargerValuesToForm(getChargerEditorValues(selectedItem)));
+      }
+
+      const currentWallPlacement = getCurrentWallRelativePlacement(getBlueprint3D?.(), selectedItem);
+      if (currentWallPlacement) {
+        setWallPlacement({
+          wallId: currentWallPlacement.wallId,
+          alongM: currentWallPlacement.alongM.toFixed(2),
+          offsetM: currentWallPlacement.offsetM.toFixed(2),
+        });
+      } else if (wallOptions.length > 0) {
+        setWallPlacement((prev) => ({
+          ...prev,
+          wallId: prev.wallId || wallOptions[0].id,
+        }));
       }
     }
   }, [selectedItem, refreshKey, isDirty]);
@@ -394,6 +428,46 @@ function ItemEditingPanel({
     }
   };
 
+  const handleWallPlacementChange = (
+    field: keyof WallPlacementFormValues,
+    value: string
+  ) => {
+    setWallPlacement((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleApplyWallPlacement = () => {
+    if (!selectedItem) return;
+
+    const applied = applyWallRelativePlacement(
+      getBlueprint3D?.(),
+      selectedItem,
+      wallPlacement.wallId,
+      Number(wallPlacement.alongM),
+      Number(wallPlacement.offsetM)
+    );
+
+    if (!applied) return;
+
+    const currentWallPlacement = getCurrentWallRelativePlacement(getBlueprint3D?.(), selectedItem);
+    if (currentWallPlacement) {
+      setWallPlacement({
+        wallId: currentWallPlacement.wallId,
+        alongM: currentWallPlacement.alongM.toFixed(2),
+        offsetM: currentWallPlacement.offsetM.toFixed(2),
+      });
+    }
+
+    if (isChargerItem(selectedItem)) {
+      setChargerValues(chargerValuesToForm(getChargerEditorValues(selectedItem)));
+    }
+
+    setIsDirty(false);
+    onItemUpdated?.();
+  };
+
   const handleChargerValueChange = (
     field: keyof ChargerEditorFormValues,
     value: string
@@ -521,6 +595,79 @@ function ItemEditingPanel({
             >
               Guardar objeto
             </Button>
+
+            <VStack spacing={3} align="stretch">
+              <Divider />
+
+              <Text fontSize="sm" fontWeight="medium" color="gray.500">
+                Posicionamiento exacto respecto a paredes
+              </Text>
+
+              <FormControl>
+                <FormLabel fontSize="sm">Pared de referencia</FormLabel>
+                <Select
+                  size="sm"
+                  value={wallPlacement.wallId}
+                  onChange={(event) => handleWallPlacementChange("wallId", event.target.value)}
+                  isDisabled={wallOptions.length === 0}
+                >
+                  {wallOptions.length === 0 && (
+                    <option value="">No hay paredes disponibles</option>
+                  )}
+                  {wallOptions.map((wall) => (
+                    <option key={wall.id} value={wall.id}>
+                      {wall.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm">Metros desde el inicio de la pared</FormLabel>
+                <NumberInput
+                  size="sm"
+                  value={wallPlacement.alongM}
+                  min={0}
+                  step={0.05}
+                  precision={2}
+                  onChange={(valueAsString) => handleWallPlacementChange("alongM", valueAsString)}
+                >
+                  <NumberInputField />
+                  <NumberInputStepper>
+                    <NumberIncrementStepper />
+                    <NumberDecrementStepper />
+                  </NumberInputStepper>
+                </NumberInput>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm">Separación desde la pared hasta el objeto</FormLabel>
+                <NumberInput
+                  size="sm"
+                  value={wallPlacement.offsetM}
+                  min={0}
+                  step={0.05}
+                  precision={2}
+                  onChange={(valueAsString) => handleWallPlacementChange("offsetM", valueAsString)}
+                >
+                  <NumberInputField />
+                  <NumberInputStepper>
+                    <NumberIncrementStepper />
+                    <NumberDecrementStepper />
+                  </NumberInputStepper>
+                </NumberInput>
+              </FormControl>
+
+              <Button
+                colorScheme="teal"
+                variant="solid"
+                size="sm"
+                onClick={handleApplyWallPlacement}
+                isDisabled={wallOptions.length === 0 || !wallPlacement.wallId}
+              >
+                Aplicar posición exacta
+              </Button>
+            </VStack>
 
             <FormControl display="flex" alignItems="center">
               <FormLabel fontSize="sm" mb={0}>
@@ -1505,6 +1652,7 @@ function Site() {
                       isSavingItem={isSavingSelectedItem}
                       onFormFocusChange={handleFormFocusChange}
                       onStartFloorplanPlacement={handleStartFloorplanPlacement}
+                      getBlueprint3D={() => blueprint3DRef.current?.getBlueprint3D?.()}
                       onClose={() => {
                         cancelFloorplanPlacement(true);
                         setSelectedItem(null);
