@@ -47,6 +47,52 @@ export const Route = createFileRoute("/_layout/site")({
 
 type RealModePanel = "robots" | "prediction" | null;
 
+const SITE_NAVIGATION_STATE_KEY = "site:navigation-state";
+
+type StoredSiteNavigationState = {
+  selectedScene: string | null;
+  previousSimulationScene: string | null;
+  isRealMode: boolean;
+  openRealPanel: RealModePanel;
+};
+
+function readStoredSiteNavigationState(): StoredSiteNavigationState | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const rawValue = window.sessionStorage.getItem(SITE_NAVIGATION_STATE_KEY);
+    if (!rawValue) return null;
+
+    const parsed = JSON.parse(rawValue) as Partial<StoredSiteNavigationState>;
+
+    return {
+      selectedScene: typeof parsed.selectedScene === "string" ? parsed.selectedScene : null,
+      previousSimulationScene:
+        typeof parsed.previousSimulationScene === "string"
+          ? parsed.previousSimulationScene
+          : null,
+      isRealMode: parsed.isRealMode === true,
+      openRealPanel:
+        parsed.openRealPanel === "robots" || parsed.openRealPanel === "prediction"
+          ? parsed.openRealPanel
+          : null,
+    };
+  } catch (error) {
+    console.warn("Could not read stored site navigation state:", error);
+    return null;
+  }
+}
+
+function clearStoredSiteNavigationState() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(SITE_NAVIGATION_STATE_KEY);
+  } catch (error) {
+    console.warn("Could not clear stored site navigation state:", error);
+  }
+}
+
 type ChargerEditorValues = {
   sceneX: number;
   sceneZ: number;
@@ -925,13 +971,25 @@ function Site() {
   const cardBg = useColorModeValue("white", "gray.800");
 
   const { activeOrganizationContext } = useOrganizationContext();
+  const initialSiteNavigationStateRef = useRef<StoredSiteNavigationState | null>(
+    readStoredSiteNavigationState()
+  );
+  const initialSiteNavigationState = initialSiteNavigationStateRef.current;
 
-  const [selectedScene, setSelectedScene] = useState<string | null>(null);
-  const prevSimulationSceneRef = useRef<string | null>(null);
-  const [isRealMode, setIsRealMode] = useState<boolean>(false);
+  const [selectedScene, setSelectedScene] = useState<string | null>(
+    initialSiteNavigationState?.selectedScene ?? null
+  );
+  const prevSimulationSceneRef = useRef<string | null>(
+    initialSiteNavigationState?.previousSimulationScene ?? null
+  );
+  const [isRealMode, setIsRealMode] = useState<boolean>(
+    initialSiteNavigationState?.isRealMode ?? false
+  );
   const [hasLoadedScene, setHasLoadedScene] = useState<boolean>(false);
   const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
-  const [openRealPanel, setOpenRealPanel] = useState<RealModePanel>(null);
+  const [openRealPanel, setOpenRealPanel] = useState<RealModePanel>(
+    initialSiteNavigationState?.openRealPanel ?? null
+  );
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedItemRevision, setSelectedItemRevision] = useState(0);
   const [isSavingSelectedItem, setIsSavingSelectedItem] = useState(false);
@@ -945,6 +1003,9 @@ function Site() {
   const sceneLoadRequestRef = useRef(0);
   const prevSimulationSceneSnapshotRef = useRef<any | null>(null);
   const prevOrgUidRef = useRef<string | undefined>(activeOrganizationContext?.uid);
+  const hasRestoredInitialSceneRef = useRef(false);
+  const hasHandledInitialRealModePanelResetRef = useRef(false);
+  const hasReusedStoredSimulationSceneRef = useRef(false);
 
   useEffect(() => {
     const currentOrgUid = activeOrganizationContext?.uid;
@@ -979,12 +1040,29 @@ function Site() {
     }
   };
 
-  const loadPlanIntoViewer = (planData: any) => {
-    if (!blueprint3DRef.current) {
-      throw new Error("Blueprint3D viewer not ready");
+  const waitForBlueprint3DReady = async () => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const blueprint = blueprint3DRef.current?.getBlueprint3D?.();
+
+      if (blueprint?.model) {
+        return true;
+      }
+
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
     }
 
-    blueprint3DRef.current.loadPlan({
+    return false;
+  };
+
+  const loadPlanIntoViewer = (planData: any) => {
+    const blueprintApp = blueprint3DRef.current;
+    const blueprint = blueprintApp?.getBlueprint3D?.();
+
+    if (!blueprintApp || !blueprint?.model) {
+     throw new Error("Blueprint3D viewer not ready");
+    }
+
+    blueprintApp.loadPlan({
       uid: planData?.uid,
       floorplan: {
         corners: planData?.floorplan?.corners || {},
@@ -1016,6 +1094,21 @@ function Site() {
     const requestId = ++sceneLoadRequestRef.current;
     setIsFloorplanPlacementActive(false);
     console.log("Selected scene:", sceneId);
+
+    const viewerReady = await waitForBlueprint3DReady();
+
+    if (requestId !== sceneLoadRequestRef.current) {
+      return false;
+    }
+
+    if (!viewerReady) {
+      showToast(
+        "Viewer Not Ready",
+        "The 3D viewer is still initializing. Please try again in a moment.",
+        "error"
+      );
+      return false;
+    }
 
     try {
       const sceneData = await ScenesService.readScene({ sceneId });
@@ -1056,12 +1149,38 @@ function Site() {
   };
 
   useEffect(() => {
+    if (hasRestoredInitialSceneRef.current) return;
+    hasRestoredInitialSceneRef.current = true;
+
+    const storedState = initialSiteNavigationStateRef.current;
+
+    if (storedState && !storedState.isRealMode && storedState.selectedScene) {
+      void loadSceneIntoViewer(storedState.selectedScene, {
+        showSuccessToast: false,
+        bypassEditingGuard: true,
+      });
+    }
+
+    clearStoredSiteNavigationState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const orgId = activeOrganizationContext?.uid;
     if (!orgId) return;
 
     if (isRealMode) {
-      prevSimulationSceneRef.current = selectedScene;
-      prevSimulationSceneSnapshotRef.current = getViewerSceneSnapshot();
+      const canReuseStoredSimulationScene =
+        initialSiteNavigationStateRef.current?.isRealMode === true &&
+        !hasReusedStoredSimulationSceneRef.current &&
+        Boolean(prevSimulationSceneRef.current);
+
+      if (canReuseStoredSimulationScene) {
+        hasReusedStoredSimulationSceneRef.current = true;
+      } else {
+        prevSimulationSceneRef.current = selectedScene;
+        prevSimulationSceneSnapshotRef.current = getViewerSceneSnapshot();
+      }
 
       const setupRealModeScene = async () => {
         try {
@@ -1157,7 +1276,7 @@ function Site() {
 
       void restorePreviousSimulationScene();
     }
-  }, [isRealMode]);
+  }, [isRealMode, activeOrganizationContext?.uid]);
 
   const handleToggleRealPanel = (panel: Exclude<RealModePanel, null>) => {
     setOpenRealPanel((prev) => (prev === panel ? null : panel));
@@ -1412,6 +1531,11 @@ function Site() {
   }, [isFloorplanPlacementActive, selectedItem]);
 
   useEffect(() => {
+    if (!hasHandledInitialRealModePanelResetRef.current) {
+      hasHandledInitialRealModePanelResetRef.current = true;
+      return;
+    }
+
     setOpenRealPanel(null);
   }, [isRealMode]);
 
@@ -1696,9 +1820,16 @@ function Site() {
                         isVisible={isRealMode}
                         isOpen={openRealPanel === "prediction"}
                         onToggle={() => handleToggleRealPanel("prediction")}
+                        returnState={{
+                          selectedScene,
+                          previousSimulationScene: prevSimulationSceneRef.current,
+                          isRealMode,
+                          openRealPanel,
+                        }}
                       />
                     </Box>
                   )}
+
                 </CardBody>
               </Card>
             </Box>
