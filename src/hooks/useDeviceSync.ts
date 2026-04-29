@@ -158,6 +158,17 @@ export function useDeviceSync(
           const newStatus: string = statusData?.status ?? '';
           if (!Number.isFinite(newX) || !Number.isFinite(newY)) return;
 
+          const lastSample = lastKnownRef.current[uid];
+
+          if (
+            lastSample &&
+            Math.abs(lastSample.x - newX) <= 0.001 &&
+            Math.abs(lastSample.z - newY) <= 0.001 &&
+            lastSample.status === newStatus
+          ) {
+            return;
+          }
+
           const navigationPath = buildNavigationPath({
             blueprint3d,
             item,
