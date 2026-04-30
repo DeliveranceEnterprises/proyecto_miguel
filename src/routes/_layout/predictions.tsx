@@ -71,6 +71,8 @@ const UNKNOWN_ROBOT = "__unknown_robot__";
 const ALL_VALUE = "__all__";
 const FALLBACK_DURATION_MS = 30 * 60 * 1000;
 const STEP_MS = 5 * 60 * 1000;
+const MIN_TIMELINE_BAR_WIDTH_PX = 2;
+const TIMELINE_LABEL_MIN_WIDTH_PCT = 4;
 
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
@@ -137,6 +139,156 @@ function formatDuration(minutes: number): string {
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }
 
+function formatDistanceMeters(value: number): string {
+  if (!Number.isFinite(value)) return "-";
+
+  return `${value.toFixed(2)} m`;
+}
+
+function formatWaypoint(
+  waypoint: NonNullable<PredictedTaskRecord["waypoints"]>[number] | undefined,
+): string {
+  if (!waypoint) return "-";
+
+  const x = Number(waypoint.coordinates_x);
+  const y = Number(waypoint.coordinates_y);
+  const position =
+    Number.isFinite(x) && Number.isFinite(y)
+      ? `x ${x.toFixed(2)}, y ${y.toFixed(2)}`
+      : "sin coordenadas";
+  const label = waypoint.label ? `${waypoint.label} · ` : "";
+  const level = waypoint.level != null ? ` · planta ${waypoint.level}` : "";
+
+  return `${label}${position}${level}`;
+}
+
+function handlePredictionTaskKeyDown(
+  event: React.KeyboardEvent<HTMLDivElement>,
+  onSelect: () => void,
+) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  onSelect();
+}
+
+function PredictionTaskDetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <Box borderWidth="1px" borderRadius="lg" px={3} py={2} bg="white">
+      <Text
+        fontSize="10px"
+        color="gray.500"
+        textTransform="uppercase"
+        letterSpacing="0.06em"
+        mb={1}
+      >
+        {label}
+      </Text>
+      <Text fontSize="sm" fontWeight="700" noOfLines={2}>
+        {value}
+      </Text>
+    </Box>
+  );
+}
+
+function PredictionTaskDetails({
+  task,
+  onClose,
+}: {
+  task: NormalizedPredictionTask;
+  onClose: () => void;
+}) {
+  const firstWaypoint = task.raw.waypoints?.[0];
+  const lastWaypoint = task.raw.waypoints?.[task.raw.waypoints.length - 1];
+
+  return (
+    <Box
+      mt={4}
+      borderWidth="1px"
+      borderColor="purple.200"
+      borderRadius="xl"
+      bg="purple.50"
+      p={4}
+    >
+      <Flex justify="space-between" align="start" gap={3} mb={3}>
+        <Box minW={0}>
+          <Text
+            fontSize="xs"
+            fontWeight="800"
+            color="purple.600"
+            textTransform="uppercase"
+            letterSpacing="0.08em"
+          >
+            Detalle de tarea seleccionada
+          </Text>
+          <Heading size="sm" noOfLines={1}>
+            {task.taskName}
+          </Heading>
+        </Box>
+
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Cerrar
+        </Button>
+      </Flex>
+
+      <Flex gap={2} wrap="wrap" mb={3}>
+        <Badge colorScheme="purple">{task.taskType}</Badge>
+        <Badge colorScheme="blue">{task.status}</Badge>
+        <Badge colorScheme="gray">{task.robotName}</Badge>
+      </Flex>
+
+      <Grid templateColumns="repeat(auto-fit, minmax(180px, 1fr))" gap={3}>
+        <PredictionTaskDetailItem
+          label="Inicio"
+          value={formatDateTime(task.startMs)}
+        />
+        <PredictionTaskDetailItem
+          label="Fin"
+          value={formatDateTime(task.endMs)}
+        />
+        <PredictionTaskDetailItem
+          label="Duración"
+          value={formatDuration(task.durationMinutes)}
+        />
+        <PredictionTaskDetailItem label="Robot" value={task.robotName} />
+        <PredictionTaskDetailItem label="Robot UID" value={task.robotUid} />
+        <PredictionTaskDetailItem label="Estado" value={task.status} />
+        <PredictionTaskDetailItem
+          label="Semana"
+          value={task.weekOffset ?? "-"}
+        />
+        <PredictionTaskDetailItem
+          label="Distancia"
+          value={formatDistanceMeters(task.mileage)}
+        />
+        <PredictionTaskDetailItem
+          label="Waypoints"
+          value={task.waypointCount}
+        />
+        <PredictionTaskDetailItem
+          label="Primer waypoint"
+          value={formatWaypoint(firstWaypoint)}
+        />
+        <PredictionTaskDetailItem
+          label="Último waypoint"
+          value={formatWaypoint(lastWaypoint)}
+        />
+        <PredictionTaskDetailItem label="ID tarea" value={task.id} />
+        {task.raw.misc && (
+          <PredictionTaskDetailItem label="Notas" value={task.raw.misc} />
+        )}
+      </Grid>
+    </Box>
+  );
+}
+
 function countBy<T>(items: T[], getKey: (item: T) => string): ChartItem[] {
   const map = new Map<string, number>();
 
@@ -156,12 +308,14 @@ function sumBy<T>(items: T[], getValue: (item: T) => number): number {
 
 function normalizeTasks(
   tasks: PredictedTaskRecord[],
-  deviceNameByUid: Map<string, string>
+  deviceNameByUid: Map<string, string>,
 ): NormalizedPredictionTask[] {
   return tasks
     .map((task, index) => {
       const startMs = new Date(task.start_time).getTime();
-      const parsedEndMs = task.end_time ? new Date(task.end_time).getTime() : NaN;
+      const parsedEndMs = task.end_time
+        ? new Date(task.end_time).getTime()
+        : NaN;
 
       if (!Number.isFinite(startMs)) {
         return null;
@@ -196,8 +350,11 @@ function normalizeTasks(
         dayLabel: formatShortDate(startMs),
         hour: date.getHours(),
         mileage: Number(task.mileage ?? 0),
-        weekOffset: typeof task.week_offset === "number" ? task.week_offset : null,
-        waypointCount: Array.isArray(task.waypoints) ? task.waypoints.length : 0,
+        weekOffset:
+          typeof task.week_offset === "number" ? task.week_offset : null,
+        waypointCount: Array.isArray(task.waypoints)
+          ? task.waypoints.length
+          : 0,
         raw: task,
       };
     })
@@ -229,7 +386,12 @@ function StatCard({
   return (
     <Card borderRadius="xl" boxShadow="sm">
       <CardBody>
-        <Text fontSize="xs" color="gray.500" textTransform="uppercase" fontWeight="700">
+        <Text
+          fontSize="xs"
+          color="gray.500"
+          textTransform="uppercase"
+          fontWeight="700"
+        >
           {label}
         </Text>
         <Text fontSize="2xl" fontWeight="800" mt={1}>
@@ -283,7 +445,12 @@ function HorizontalBarChart({
                       {item.value}
                     </Text>
                   </Flex>
-                  <Box h="10px" bg="gray.100" borderRadius="full" overflow="hidden">
+                  <Box
+                    h="10px"
+                    bg="gray.100"
+                    borderRadius="full"
+                    overflow="hidden"
+                  >
                     <Box
                       h="100%"
                       width={width}
@@ -379,7 +546,8 @@ function DailyTaskLineChart({
               <Heading size="sm">{title}</Heading>
             </Flex>
             <Text fontSize="sm" color="gray.500" mt={1}>
-              Curva diaria basada en el número de tareas predichas por día. Se actualiza con los filtros activos.
+              Curva diaria basada en el número de tareas predichas por día. Se
+              actualiza con los filtros activos.
             </Text>
           </Box>
           <Badge colorScheme="purple" px={3} py={1} borderRadius="full">
@@ -545,7 +713,12 @@ function HourlyChart({ tasks }: { tasks: NormalizedPredictionTask[] }) {
                   bg={item.value > 0 ? "purple.400" : "gray.200"}
                   borderRadius="6px 6px 0 0"
                 />
-                <Text fontSize="9px" color="gray.500" transform="rotate(-45deg)" mt={2}>
+                <Text
+                  fontSize="9px"
+                  color="gray.500"
+                  transform="rotate(-45deg)"
+                  mt={2}
+                >
                   {item.label.replace(":00", "")}
                 </Text>
               </Flex>
@@ -579,7 +752,9 @@ function MomentExplorer({ tasks }: { tasks: NormalizedPredictionTask[] }) {
   const activeTasks = useMemo(() => {
     if (cursorMs === null) return [];
 
-    return tasks.filter((task) => task.startMs <= cursorMs && cursorMs < task.endMs);
+    return tasks.filter(
+      (task) => task.startMs <= cursorMs && cursorMs < task.endMs,
+    );
   }, [tasks, cursorMs]);
 
   if (!bounds || cursorMs === null) {
@@ -604,7 +779,8 @@ function MomentExplorer({ tasks }: { tasks: NormalizedPredictionTask[] }) {
           <Box>
             <Heading size="sm">Explorador temporal</Heading>
             <Text fontSize="sm" color="gray.500" mt={1}>
-              Mueve el cursor para ver qué tareas están activas en cada instante.
+              Mueve el cursor para ver qué tareas están activas en cada
+              instante.
             </Text>
           </Box>
           <Badge colorScheme="purple" px={3} py={1} borderRadius="full">
@@ -655,7 +831,8 @@ function MomentExplorer({ tasks }: { tasks: NormalizedPredictionTask[] }) {
                     </Text>
                   </Flex>
                   <Text fontSize="xs" color="gray.600">
-                    {formatTime(task.startMs)} - {formatTime(task.endMs)} · {formatDuration(task.durationMinutes)}
+                    {formatTime(task.startMs)} - {formatTime(task.endMs)} ·{" "}
+                    {formatDuration(task.durationMinutes)}
                   </Text>
                 </Box>
               ))}
@@ -664,6 +841,20 @@ function MomentExplorer({ tasks }: { tasks: NormalizedPredictionTask[] }) {
         </Box>
       </CardBody>
     </Card>
+  );
+}
+
+function ToggleContentButton({
+  isOpen,
+  onToggle,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Button type="button" size="sm" variant="outline" onClick={onToggle}>
+      {isOpen ? "Ocultar contenido" : "Mostrar contenido"}
+    </Button>
   );
 }
 
@@ -688,16 +879,50 @@ function WeekTimeline({ tasks }: { tasks: NormalizedPredictionTask[] }) {
       .sort((a, b) => a.startMs - b.startMs);
   }, [tasks]);
 
+  const [isContentVisible, setIsContentVisible] = useState(true);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const selectedTask = useMemo(() => {
+    if (!selectedTaskId) return null;
+
+    return tasks.find((task) => task.id === selectedTaskId) ?? null;
+  }, [tasks, selectedTaskId]);
+
+  useEffect(() => {
+    if (!selectedTaskId) return;
+
+    const stillVisible = tasks.some((task) => task.id === selectedTaskId);
+    if (!stillVisible) {
+      setSelectedTaskId(null);
+    }
+  }, [selectedTaskId, tasks]);
+
   if (groups.length === 0) {
     return (
       <Card borderRadius="xl" boxShadow="sm">
         <CardBody>
-          <Heading size="sm" mb={2}>
-            Línea de tiempo semanal
-          </Heading>
-          <Text fontSize="sm" color="gray.500">
-            No hay tareas para mostrar.
-          </Text>
+          <Flex
+            justify="space-between"
+            align="center"
+            gap={3}
+            mb={isContentVisible ? 2 : 0}
+          >
+            <Flex align="center" gap={2}>
+              <FiCalendar />
+              <Heading size="sm">Línea de tiempo semanal</Heading>
+            </Flex>
+
+            <ToggleContentButton
+              isOpen={isContentVisible}
+              onToggle={() => setIsContentVisible((value) => !value)}
+            />
+          </Flex>
+
+          {isContentVisible && (
+            <Text fontSize="sm" color="gray.500">
+              No hay tareas para mostrar.
+            </Text>
+          )}
         </CardBody>
       </Card>
     );
@@ -706,70 +931,146 @@ function WeekTimeline({ tasks }: { tasks: NormalizedPredictionTask[] }) {
   return (
     <Card borderRadius="xl" boxShadow="sm">
       <CardBody>
-        <Flex align="center" gap={2} mb={4}>
-          <FiCalendar />
-          <Heading size="sm">Línea de tiempo semanal</Heading>
+        <Flex
+          justify="space-between"
+          align="center"
+          gap={3}
+          mb={isContentVisible ? 4 : 0}
+        >
+          <Flex align="center" gap={2}>
+            <FiCalendar />
+            <Heading size="sm">Línea de tiempo semanal</Heading>
+          </Flex>
+
+          <ToggleContentButton
+            isOpen={isContentVisible}
+            onToggle={() => setIsContentVisible((value) => !value)}
+          />
         </Flex>
 
-        <Flex direction="column" gap={5}>
-          {groups.map((group) => (
-            <Box key={group.dayKey}>
-              <Flex justify="space-between" align="center" mb={2}>
-                <Text fontWeight="800">{group.label}</Text>
-                <Badge>{group.tasks.length} tarea(s)</Badge>
-              </Flex>
+        {isContentVisible && (
+          <Flex direction="column" gap={5}>
+            {selectedTask && (
+              <PredictionTaskDetails
+                task={selectedTask}
+                onClose={() => setSelectedTaskId(null)}
+              />
+            )}
 
-              <Box
-                borderWidth="1px"
-                borderRadius="lg"
-                bg="gray.50"
-                overflow="hidden"
-                minW="760px"
-              >
-                <Flex px={3} py={2} color="gray.500" fontSize="10px" borderBottomWidth="1px">
-                  {[0, 4, 8, 12, 16, 20, 24].map((hour) => (
-                    <Box key={hour} flex="1">
-                      {pad2(hour)}:00
-                    </Box>
-                  ))}
+            {groups.map((group) => (
+              <Box key={group.dayKey}>
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text fontWeight="800">{group.label}</Text>
+                  <Badge>{group.tasks.length} tarea(s)</Badge>
                 </Flex>
 
-                <Box position="relative" minHeight={`${Math.max(46, group.tasks.length * 36)}px`}>
-                  {group.tasks.map((task, index) => {
-                    const dayLength = group.endMs - group.startMs;
-                    const left = ((task.startMs - group.startMs) / dayLength) * 100;
-                    const width = Math.max(((task.endMs - task.startMs) / dayLength) * 100, 1.2);
-
-                    return (
-                      <Box
-                        key={task.id}
-                        position="absolute"
-                        top={`${8 + index * 34}px`}
-                        left={`${left}%`}
-                        width={`${width}%`}
-                        minW="90px"
-                        maxW="280px"
-                        px={2}
-                        py={1}
-                        borderRadius="md"
-                        bg="purple.400"
-                        color="white"
-                        title={`${task.robotName} · ${task.taskType} · ${formatDateTime(task.startMs)} · ${formatDuration(task.durationMinutes)}`}
-                      >
-                        <Text fontSize="11px" fontWeight="800" noOfLines={1}>
-                          {task.taskType}
-                        </Text>
-                        <Text fontSize="10px" noOfLines={1} opacity={0.9}>
-                          {formatTime(task.startMs)} · {task.robotName}
-                        </Text>
+                <Box
+                  borderWidth="1px"
+                  borderRadius="lg"
+                  bg="gray.50"
+                  overflow="hidden"
+                  minW="760px"
+                >
+                  <Flex
+                    px={3}
+                    py={2}
+                    color="gray.500"
+                    fontSize="10px"
+                    borderBottomWidth="1px"
+                  >
+                    {[0, 4, 8, 12, 16, 20, 24].map((hour) => (
+                      <Box key={hour} flex="1">
+                        {pad2(hour)}:00
                       </Box>
-                    );
-                  })}
+                    ))}
+                  </Flex>
+
+                  <Box
+                    position="relative"
+                    minHeight={`${Math.max(46, group.tasks.length * 36)}px`}
+                  >
+                    {group.tasks.map((task, index) => {
+                      const dayLength = group.endMs - group.startMs;
+                      const visibleStartMs = Math.max(
+                        task.startMs,
+                        group.startMs,
+                      );
+                      const visibleEndMs = Math.min(task.endMs, group.endMs);
+                      const left =
+                        ((visibleStartMs - group.startMs) / dayLength) * 100;
+                      const width = Math.max(
+                        ((visibleEndMs - visibleStartMs) / dayLength) * 100,
+                        0,
+                      );
+                      const showLabel = width >= TIMELINE_LABEL_MIN_WIDTH_PCT;
+
+                      return (
+                        <Box
+                          key={task.id}
+                          position="absolute"
+                          top={`${8 + index * 34}px`}
+                          left={`${left}%`}
+                          width={`${width}%`}
+                          minW={
+                            width > 0
+                              ? `${MIN_TIMELINE_BAR_WIDTH_PX}px`
+                              : undefined
+                          }
+                          px={showLabel ? 2 : 0}
+                          py={1}
+                          borderRadius="md"
+                          bg="purple.400"
+                          color="white"
+                          overflow="hidden"
+                          cursor="pointer"
+                          outline={
+                            selectedTaskId === task.id
+                              ? "2px solid var(--chakra-colors-purple-700)"
+                              : "1px solid rgba(255,255,255,0.35)"
+                          }
+                          outlineOffset="0"
+                          boxShadow={
+                            selectedTaskId === task.id
+                              ? "0 0 0 3px rgba(128,90,213,0.20)"
+                              : undefined
+                          }
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Mostrar detalle de ${task.taskName}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedTaskId(task.id);
+                          }}
+                          onKeyDown={(event) =>
+                            handlePredictionTaskKeyDown(event, () =>
+                              setSelectedTaskId(task.id),
+                            )
+                          }
+                          title={`${task.robotName} · ${task.taskName} · ${formatDateTime(task.startMs)} · ${formatDuration(task.durationMinutes)}`}
+                        >
+                          {showLabel && (
+                            <>
+                              <Text
+                                fontSize="11px"
+                                fontWeight="800"
+                                noOfLines={1}
+                              >
+                                {task.taskType}
+                              </Text>
+                              <Text fontSize="10px" noOfLines={1} opacity={0.9}>
+                                {formatTime(task.startMs)} · {task.robotName}
+                              </Text>
+                            </>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Box>
                 </Box>
               </Box>
-            </Box>
-          ))}
-        </Flex>
+            ))}
+          </Flex>
+        )}
       </CardBody>
     </Card>
   );
@@ -790,7 +1091,7 @@ function getSafeReturnPath(value: string | null): string {
 
 function navigateToPath(
   navigate: ReturnType<typeof useNavigate>,
-  path: string
+  path: string,
 ) {
   const url = new URL(path, window.location.origin);
   const search = Object.fromEntries(url.searchParams.entries());
@@ -832,6 +1133,9 @@ function PredictionsPage() {
   const [selectedType, setSelectedType] = useState(ALL_VALUE);
   const [selectedDay, setSelectedDay] = useState(ALL_VALUE);
 
+  const [isPredictedTasksTableVisible, setIsPredictedTasksTableVisible] =
+    useState(true);
+
   const cachedPrediction = useMemo(() => loadLastPredictionResponse(), []);
 
   const loadData = async () => {
@@ -847,7 +1151,7 @@ function PredictionsPage() {
       setErrorMessage(
         error instanceof Error
           ? `${error.message}. Mostrando la última predicción guardada en el navegador, si existe.`
-          : "No se pudieron cargar las predicciones."
+          : "No se pudieron cargar las predicciones.",
       );
     } finally {
       setIsLoading(false);
@@ -867,7 +1171,11 @@ function PredictionsPage() {
 
     let cancelled = false;
 
-    DevicesService.getDevicesOwn({ ownerId: activeOrganizationId, skip: 0, limit: 1000 })
+    DevicesService.getDevicesOwn({
+      ownerId: activeOrganizationId,
+      skip: 0,
+      limit: 1000,
+    })
       .then((response) => {
         if (!cancelled) {
           setDevices(response.data ?? []);
@@ -896,7 +1204,7 @@ function PredictionsPage() {
 
   const tasks = useMemo(
     () => normalizeTasks(rawTasks, deviceNameByUid),
-    [rawTasks, deviceNameByUid]
+    [rawTasks, deviceNameByUid],
   );
 
   const robotOptions = useMemo(() => {
@@ -909,11 +1217,14 @@ function PredictionsPage() {
 
   const typeOptions = useMemo(
     () => Array.from(new Set(tasks.map((task) => task.taskType))).sort(),
-    [tasks]
+    [tasks],
   );
 
   const dayOptions = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; startMs: number }>();
+    const map = new Map<
+      string,
+      { key: string; label: string; startMs: number }
+    >();
     tasks.forEach((task) => {
       if (!map.has(task.dayKey)) {
         map.set(task.dayKey, {
@@ -929,9 +1240,12 @@ function PredictionsPage() {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      const robotMatches = selectedRobot === ALL_VALUE || task.robotUid === selectedRobot;
-      const typeMatches = selectedType === ALL_VALUE || task.taskType === selectedType;
-      const dayMatches = selectedDay === ALL_VALUE || task.dayKey === selectedDay;
+      const robotMatches =
+        selectedRobot === ALL_VALUE || task.robotUid === selectedRobot;
+      const typeMatches =
+        selectedType === ALL_VALUE || task.taskType === selectedType;
+      const dayMatches =
+        selectedDay === ALL_VALUE || task.dayKey === selectedDay;
 
       return robotMatches && typeMatches && dayMatches;
     });
@@ -944,7 +1258,8 @@ function PredictionsPage() {
     const typeCount = new Set(source.map((task) => task.taskType)).size;
     const dayCount = new Set(source.map((task) => task.dayKey)).size;
     const totalDuration = sumBy(source, (task) => task.durationMinutes);
-    const avgDuration = source.length > 0 ? Math.round(totalDuration / source.length) : 0;
+    const avgDuration =
+      source.length > 0 ? Math.round(totalDuration / source.length) : 0;
     const totalMileage = sumBy(source, (task) => task.mileage);
     const totalWaypoints = sumBy(source, (task) => task.waypointCount);
 
@@ -965,26 +1280,35 @@ function PredictionsPage() {
 
   const tasksByDay = useMemo(() => {
     const grouped = countBy(filteredTasks, (task) => task.dayLabel);
-    const startByLabel = new Map(filteredTasks.map((task) => [task.dayLabel, getLocalDayStart(task.startMs)]));
+    const startByLabel = new Map(
+      filteredTasks.map((task) => [
+        task.dayLabel,
+        getLocalDayStart(task.startMs),
+      ]),
+    );
     return grouped.sort(
-      (a, b) => (startByLabel.get(a.label) ?? 0) - (startByLabel.get(b.label) ?? 0)
+      (a, b) =>
+        (startByLabel.get(a.label) ?? 0) - (startByLabel.get(b.label) ?? 0),
     );
   }, [filteredTasks]);
 
   const tasksByRobot = useMemo(
     () => countBy(filteredTasks, (task) => task.robotName),
-    [filteredTasks]
+    [filteredTasks],
   );
 
   const tasksByType = useMemo(
     () => countBy(filteredTasks, (task) => task.taskType),
-    [filteredTasks]
+    [filteredTasks],
   );
 
   const durationByRobot = useMemo(() => {
     const map = new Map<string, number>();
     filteredTasks.forEach((task) => {
-      map.set(task.robotName, (map.get(task.robotName) ?? 0) + task.durationMinutes);
+      map.set(
+        task.robotName,
+        (map.get(task.robotName) ?? 0) + task.durationMinutes,
+      );
     });
 
     return Array.from(map.entries())
@@ -1000,7 +1324,7 @@ function PredictionsPage() {
   const topType = tasksByType[0];
   const busiestDay = tasksByDay.reduce<ChartItem | null>(
     (best, item) => (!best || item.value > best.value ? item : best),
-    null
+    null,
   );
 
   return (
@@ -1018,7 +1342,8 @@ function PredictionsPage() {
           </Button>
           <Heading size="lg">Predicciones</Heading>
           <Text color="gray.500" mt={1}>
-            Resumen, gráficas, línea de tiempo y tabla completa de las tareas predichas.
+            Resumen, gráficas, línea de tiempo y tabla completa de las tareas
+            predichas.
           </Text>
         </Box>
 
@@ -1038,20 +1363,29 @@ function PredictionsPage() {
             <Flex gap={3} wrap="wrap" align="center">
               <Badge colorScheme="green">Última predicción</Badge>
               <Text fontSize="sm" color="gray.600">
-                {cachedPrediction.generated_count ?? cachedPrediction.data?.length ?? 0} tarea(s)
+                {cachedPrediction.generated_count ??
+                  cachedPrediction.data?.length ??
+                  0}{" "}
+                tarea(s)
                 {cachedPrediction.weeks_ahead
                   ? ` · ${cachedPrediction.weeks_ahead} semana(s)`
                   : ""}
-                {cachedPrediction.data_source ? ` · fuente: ${cachedPrediction.data_source}` : ""}
+                {cachedPrediction.data_source
+                  ? ` · fuente: ${cachedPrediction.data_source}`
+                  : ""}
                 {cachedPrediction.saved_at
                   ? ` · guardada: ${formatDateTime(new Date(cachedPrediction.saved_at).getTime())}`
                   : ""}
               </Text>
               {cachedPrediction.predicted_file && (
-                <Badge variant="outline">{cachedPrediction.predicted_file}</Badge>
+                <Badge variant="outline">
+                  {cachedPrediction.predicted_file}
+                </Badge>
               )}
               {cachedPrediction.combined_file && (
-                <Badge variant="outline">{cachedPrediction.combined_file}</Badge>
+                <Badge variant="outline">
+                  {cachedPrediction.combined_file}
+                </Badge>
               )}
             </Flex>
           </CardBody>
@@ -1059,7 +1393,14 @@ function PredictionsPage() {
       )}
 
       {errorMessage && (
-        <Card borderRadius="xl" boxShadow="sm" bg="orange.50" borderColor="orange.200" borderWidth="1px" mb={5}>
+        <Card
+          borderRadius="xl"
+          boxShadow="sm"
+          bg="orange.50"
+          borderColor="orange.200"
+          borderWidth="1px"
+          mb={5}
+        >
           <CardBody>
             <Text fontSize="sm" color="orange.800">
               {errorMessage}
@@ -1069,7 +1410,13 @@ function PredictionsPage() {
       )}
 
       {isLoading ? (
-        <Flex align="center" justify="center" minH="360px" direction="column" gap={3}>
+        <Flex
+          align="center"
+          justify="center"
+          minH="360px"
+          direction="column"
+          gap={3}
+        >
           <Spinner size="xl" color="purple.400" />
           <Text color="gray.500">Cargando predicciones...</Text>
         </Flex>
@@ -1080,7 +1427,8 @@ function PredictionsPage() {
               No hay predicciones todavía
             </Heading>
             <Text color="gray.500" mb={4}>
-              Genera una predicción desde Real Mode y después vuelve a esta pantalla.
+              Genera una predicción desde Real Mode y después vuelve a esta
+              pantalla.
             </Text>
             <Button colorScheme="purple" onClick={handleBackToPreviousPage}>
               Ir a predecir
@@ -1090,10 +1438,26 @@ function PredictionsPage() {
       ) : (
         <Flex direction="column" gap={5}>
           <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={4}>
-            <StatCard label="Tareas" value={stats.total} hint="según filtros activos" />
-            <StatCard label="Robots" value={stats.robotCount} hint="robots con tareas" />
-            <StatCard label="Días" value={stats.dayCount} hint="días con actividad" />
-            <StatCard label="Duración media" value={formatDuration(stats.avgDuration)} hint="por tarea" />
+            <StatCard
+              label="Tareas"
+              value={stats.total}
+              hint="según filtros activos"
+            />
+            <StatCard
+              label="Robots"
+              value={stats.robotCount}
+              hint="robots con tareas"
+            />
+            <StatCard
+              label="Días"
+              value={stats.dayCount}
+              hint="días con actividad"
+            />
+            <StatCard
+              label="Duración media"
+              value={formatDuration(stats.avgDuration)}
+              hint="por tarea"
+            />
           </Grid>
 
           <Card borderRadius="xl" boxShadow="sm" bg={cardBg}>
@@ -1103,7 +1467,10 @@ function PredictionsPage() {
                   <Text fontSize="xs" fontWeight="700" color="gray.500" mb={1}>
                     Robot
                   </Text>
-                  <Select value={selectedRobot} onChange={(event) => setSelectedRobot(event.target.value)}>
+                  <Select
+                    value={selectedRobot}
+                    onChange={(event) => setSelectedRobot(event.target.value)}
+                  >
                     <option value={ALL_VALUE}>Todos los robots</option>
                     {robotOptions.map((robot) => (
                       <option key={robot.uid} value={robot.uid}>
@@ -1117,7 +1484,10 @@ function PredictionsPage() {
                   <Text fontSize="xs" fontWeight="700" color="gray.500" mb={1}>
                     Tipo de tarea
                   </Text>
-                  <Select value={selectedType} onChange={(event) => setSelectedType(event.target.value)}>
+                  <Select
+                    value={selectedType}
+                    onChange={(event) => setSelectedType(event.target.value)}
+                  >
                     <option value={ALL_VALUE}>Todos los tipos</option>
                     {typeOptions.map((type) => (
                       <option key={type} value={type}>
@@ -1131,7 +1501,10 @@ function PredictionsPage() {
                   <Text fontSize="xs" fontWeight="700" color="gray.500" mb={1}>
                     Día
                   </Text>
-                  <Select value={selectedDay} onChange={(event) => setSelectedDay(event.target.value)}>
+                  <Select
+                    value={selectedDay}
+                    onChange={(event) => setSelectedDay(event.target.value)}
+                  >
                     <option value={ALL_VALUE}>Todos los días</option>
                     {dayOptions.map((day) => (
                       <option key={day.key} value={day.key}>
@@ -1158,14 +1531,20 @@ function PredictionsPage() {
                   Rango temporal: <strong>{stats.rangeLabel}</strong>
                 </Text>
                 <Text>
-                  Duración total estimada: <strong>{formatDuration(stats.totalDuration)}</strong>
-                  {stats.totalMileage > 0 ? ` · mileage total: ${stats.totalMileage.toFixed(2)}` : ""}
-                  {stats.totalWaypoints > 0 ? ` · waypoints: ${stats.totalWaypoints}` : ""}
+                  Duración total estimada:{" "}
+                  <strong>{formatDuration(stats.totalDuration)}</strong>
+                  {stats.totalMileage > 0
+                    ? ` · mileage total: ${stats.totalMileage.toFixed(2)}`
+                    : ""}
+                  {stats.totalWaypoints > 0
+                    ? ` · waypoints: ${stats.totalWaypoints}`
+                    : ""}
                 </Text>
                 <Text>
-                  Robot más usado: <strong>{topRobot?.label ?? "Sin dato"}</strong>
-                  {topRobot ? ` (${topRobot.value} tarea(s))` : ""} · Tipo más frecuente:{" "}
-                  <strong>{topType?.label ?? "Sin dato"}</strong>
+                  Robot más usado:{" "}
+                  <strong>{topRobot?.label ?? "Sin dato"}</strong>
+                  {topRobot ? ` (${topRobot.value} tarea(s))` : ""} · Tipo más
+                  frecuente: <strong>{topType?.label ?? "Sin dato"}</strong>
                   {topType ? ` (${topType.value})` : ""} · Día con más carga:{" "}
                   <strong>{busiestDay?.label ?? "Sin dato"}</strong>
                   {busiestDay ? ` (${busiestDay.value})` : ""}
@@ -1174,13 +1553,19 @@ function PredictionsPage() {
             </CardBody>
           </Card>
 
-          <DailyTaskLineChart title="Evolución diaria de tareas" data={tasksByDay} />
+          <DailyTaskLineChart
+            title="Evolución diaria de tareas"
+            data={tasksByDay}
+          />
 
           <Grid templateColumns={{ base: "1fr", xl: "repeat(2, 1fr)" }} gap={5}>
             <HorizontalBarChart title="Tareas por día" data={tasksByDay} />
             <HorizontalBarChart title="Tareas por robot" data={tasksByRobot} />
             <HorizontalBarChart title="Tareas por tipo" data={tasksByType} />
-            <HorizontalBarChart title="Carga estimada por robot" data={durationByRobot} />
+            <HorizontalBarChart
+              title="Carga estimada por robot"
+              data={durationByRobot}
+            />
           </Grid>
 
           <HourlyChart tasks={filteredTasks} />
@@ -1192,42 +1577,60 @@ function PredictionsPage() {
 
           <Card borderRadius="xl" boxShadow="sm" bg={cardBg}>
             <CardBody>
-              <Heading size="sm" mb={4}>
-                Tabla completa de tareas predichas
-              </Heading>
+              <Flex
+                justify="space-between"
+                align="center"
+                gap={3}
+                mb={isPredictedTasksTableVisible ? 4 : 0}
+              >
+                <Heading size="sm">Tabla completa de tareas predichas</Heading>
 
-              <Box overflowX="auto">
-                <Table size="sm">
-                  <Thead>
-                    <Tr>
-                      <Th>Inicio</Th>
-                      <Th>Fin</Th>
-                      <Th>Duración</Th>
-                      <Th>Robot</Th>
-                      <Th>Tipo</Th>
-                      <Th>Estado</Th>
-                      <Th>Semana</Th>
-                      <Th>Waypoints</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {filteredTasks.map((task) => (
-                      <Tr key={task.id}>
-                        <Td whiteSpace="nowrap">{formatDateTime(task.startMs)}</Td>
-                        <Td whiteSpace="nowrap">{formatDateTime(task.endMs)}</Td>
-                        <Td>{formatDuration(task.durationMinutes)}</Td>
-                        <Td>{task.robotName}</Td>
-                        <Td>
-                          <Badge colorScheme="purple">{task.taskType}</Badge>
-                        </Td>
-                        <Td>{task.status}</Td>
-                        <Td>{task.weekOffset ?? "-"}</Td>
-                        <Td>{task.waypointCount}</Td>
+                <ToggleContentButton
+                  isOpen={isPredictedTasksTableVisible}
+                  onToggle={() =>
+                    setIsPredictedTasksTableVisible((value) => !value)
+                  }
+                />
+              </Flex>
+
+              {isPredictedTasksTableVisible && (
+                <Box overflowX="auto">
+                  <Table size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th>Inicio</Th>
+                        <Th>Fin</Th>
+                        <Th>Duración</Th>
+                        <Th>Robot</Th>
+                        <Th>Tipo</Th>
+                        <Th>Estado</Th>
+                        <Th>Semana</Th>
+                        <Th>Waypoints</Th>
                       </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              </Box>
+                    </Thead>
+                    <Tbody>
+                      {filteredTasks.map((task) => (
+                        <Tr key={task.id}>
+                          <Td whiteSpace="nowrap">
+                            {formatDateTime(task.startMs)}
+                          </Td>
+                          <Td whiteSpace="nowrap">
+                            {formatDateTime(task.endMs)}
+                          </Td>
+                          <Td>{formatDuration(task.durationMinutes)}</Td>
+                          <Td>{task.robotName}</Td>
+                          <Td>
+                            <Badge colorScheme="purple">{task.taskType}</Badge>
+                          </Td>
+                          <Td>{task.status}</Td>
+                          <Td>{task.weekOffset ?? "-"}</Td>
+                          <Td>{task.waypointCount}</Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </Box>
+              )}
             </CardBody>
           </Card>
         </Flex>

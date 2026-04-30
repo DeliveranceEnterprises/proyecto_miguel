@@ -14,22 +14,29 @@ export type SceneItemFootprint = {
   areaCm2: number;
   isDevice: boolean;
   isRobot: boolean;
+  isCharger: boolean;
 };
 
 export type SceneItemFootprintOptions = {
   movingItem?: any | null;
+  includeObjects?: boolean;
   includeDevices?: boolean;
   includeRobots?: boolean;
+  includeChargers?: boolean;
   includeItemsWithoutCorners?: boolean;
 };
 
 const DEFAULT_OPTIONS: Required<Omit<SceneItemFootprintOptions, 'movingItem'>> = {
+  includeObjects: true,
   includeDevices: false,
   includeRobots: false,
+  includeChargers: false,
   includeItemsWithoutCorners: true,
 };
 
 const ROBOT_NAME_RE = /robot|panda|pandabot|pudu|ketty|bellabot|keenon|allybot|viggo/i;
+const CHARGING_STATION_NAME_RE = /estaci[oó]n[\s_-]*carga|estacion[\s_-]*carga|charging[\s_-]*station/i;
+const ROBOT_CHARGER_NAME_RE = /(^|[\s_-])(charger|cargador)([\s_-]|$)/i;
 
 function toFiniteNumber(value: unknown): number | null {
   const n = Number(value);
@@ -85,6 +92,32 @@ function isRobotItem(item: any): boolean {
   ].filter(Boolean).join(' ');
 
   return ROBOT_NAME_RE.test(text);
+}
+
+function isChargerItem(item: any): boolean {
+  const meta = item?.metadata ?? {};
+
+  const text = [
+    item?.name,
+    meta.name,
+    meta.itemName,
+    meta.deviceName,
+    meta.deviceModel,
+    meta.deviceImage,
+    meta.deviceMapKey,
+    meta.modelUrl,
+    meta.anchor_type,
+    meta.anchorType,
+  ].filter(Boolean).join(' ');
+
+  // "Estacion_Carga" is a generic charging station object. It should stay
+  // treated as a normal object, not as a robot charger.
+  if (CHARGING_STATION_NAME_RE.test(text)) return false;
+
+  const anchorType = String(meta.anchor_type ?? meta.anchorType ?? '').toLowerCase().trim();
+  if (anchorType === 'charger') return true;
+
+  return ROBOT_CHARGER_NAME_RE.test(text);
 }
 
 function polygonArea(points: FootprintPoint[]): number {
@@ -175,9 +208,15 @@ export function getSceneItemFootprints(
 
     const isDevice = isDeviceItem(item);
     const isRobot = isRobotItem(item);
+    const isCharger = isChargerItem(item);
 
-    if (isDevice && !merged.includeDevices) return [];
-    if (isRobot && !merged.includeRobots) return [];
+    if (isCharger) {
+      if (!merged.includeChargers) return [];
+    } else {
+      if (!merged.includeObjects) return [];
+      if (isDevice && !merged.includeDevices) return [];
+      if (isRobot && !merged.includeRobots) return [];
+    }
 
     const points = getCornersFromItem(item);
     if (points.length < 3 && !merged.includeItemsWithoutCorners) return [];
@@ -195,6 +234,7 @@ export function getSceneItemFootprints(
       areaCm2: polygonArea(points),
       isDevice,
       isRobot,
+      isCharger,
     }];
   });
 }

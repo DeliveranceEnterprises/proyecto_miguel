@@ -7,12 +7,16 @@ export interface DrawObjectFootprintsOverlayOptions {
   visible?: boolean;
   includeLabels?: boolean;
   selectedFootprintId?: string | null;
+  includeObjects?: boolean;
   includeDevices?: boolean;
   includeRobots?: boolean;
+  includeChargers?: boolean;
   fillStyle?: string;
   strokeStyle?: string;
   selectedFillStyle?: string;
   selectedStrokeStyle?: string;
+  chargerFillStyle?: string;
+  chargerStrokeStyle?: string;
   labelStyle?: string;
 }
 
@@ -112,6 +116,8 @@ const drawFootprintPolygon = (
       | 'strokeStyle'
       | 'selectedFillStyle'
       | 'selectedStrokeStyle'
+      | 'chargerFillStyle'
+      | 'chargerStrokeStyle'
       | 'labelStyle'
     >
   > & { isSelected: boolean }
@@ -128,10 +134,14 @@ const drawFootprintPolygon = (
 
   context.fillStyle = options.isSelected
     ? options.selectedFillStyle
-    : options.fillStyle;
+    : footprint.isCharger
+      ? options.chargerFillStyle
+      : options.fillStyle;
   context.strokeStyle = options.isSelected
     ? options.selectedStrokeStyle
-    : options.strokeStyle;
+    : footprint.isCharger
+      ? options.chargerStrokeStyle
+      : options.strokeStyle;
   context.lineWidth = options.isSelected ? 3 : 2;
   context.fill();
   context.stroke();
@@ -168,12 +178,16 @@ export const drawObjectFootprintsOverlay = (
     visible = true,
     includeLabels = false,
     selectedFootprintId = null,
+    includeObjects = true,
     includeDevices = true,
     includeRobots = false,
+    includeChargers = false,
     fillStyle = 'rgba(49, 130, 206, 0.22)',
     strokeStyle = 'rgba(43, 108, 176, 0.9)',
     selectedFillStyle = 'rgba(237, 137, 54, 0.32)',
     selectedStrokeStyle = 'rgba(194, 65, 12, 0.95)',
+    chargerFillStyle = 'rgba(56, 161, 105, 0.24)',
+    chargerStrokeStyle = 'rgba(47, 133, 90, 0.95)',
     labelStyle = '#1A365D',
   } = options;
 
@@ -191,8 +205,10 @@ export const drawObjectFootprintsOverlay = (
   overlay.style.display = 'block';
 
   const footprints = getSceneItemFootprints(blueprint3d, {
+    includeObjects,
     includeDevices,
     includeRobots,
+    includeChargers,
   });
 
   footprints.forEach((footprint) => {
@@ -202,6 +218,8 @@ export const drawObjectFootprintsOverlay = (
       strokeStyle,
       selectedFillStyle,
       selectedStrokeStyle,
+      chargerFillStyle,
+      chargerStrokeStyle,
       labelStyle,
       isSelected: footprint.id === selectedFootprintId,
     });

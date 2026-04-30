@@ -23,12 +23,18 @@ type TimelineTask = {
   durationMinutes: number;
   startTime: string;
   endTime: string | null;
+  mileage: number;
+  weekOffset: number | null;
+  waypointCount: number;
+  misc: string | null;
 };
 
 const UNKNOWN_ROBOT = "__unknown_robot__";
 const ALL_ROBOTS = "__all__";
 const STEP_MS = 5 * 60 * 1000;
 const FALLBACK_DURATION_MS = 30 * 60 * 1000;
+const MIN_TIMELINE_BAR_WIDTH_PX = 2;
+const TIMELINE_LABEL_MIN_WIDTH_PCT = 3;
 
 function formatDateTime(value: number): string {
   return new Date(value).toLocaleString(undefined, {
@@ -51,6 +57,119 @@ function getDurationMinutes(startMs: number, endMs: number): number {
   return Math.max(1, Math.round((endMs - startMs) / 60000));
 }
 
+function formatDistanceMeters(value: number): string {
+  if (!Number.isFinite(value)) return "-";
+
+  return `${value.toFixed(2)} m`;
+}
+
+function handleTaskKeyDown(
+  event: React.KeyboardEvent<HTMLDivElement>,
+  onSelect: () => void,
+) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  onSelect();
+}
+
+function DetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <Box
+      border="1px solid rgba(255,255,255,0.10)"
+      borderRadius="8px"
+      px={3}
+      py={2}
+      bg="rgba(255,255,255,0.05)"
+      minW={0}
+    >
+      <Text
+        fontSize="10px"
+        color="whiteAlpha.600"
+        textTransform="uppercase"
+        letterSpacing="0.06em"
+        mb={1}
+      >
+        {label}
+      </Text>
+      <Text fontSize="xs" fontWeight="700" noOfLines={2}>
+        {value}
+      </Text>
+    </Box>
+  );
+}
+
+function SelectedTaskDetails({
+  task,
+  onClose,
+}: {
+  task: TimelineTask;
+  onClose: () => void;
+}) {
+  return (
+    <Box
+      mt={3}
+      border="1px solid rgba(196,181,253,0.30)"
+      borderRadius="12px"
+      bg="rgba(88,28,135,0.24)"
+      p={3}
+    >
+      <Flex justify="space-between" align="start" gap={3} mb={3}>
+        <Box minW={0}>
+          <Text
+            fontSize="10px"
+            fontWeight="800"
+            color="purple.200"
+            textTransform="uppercase"
+            letterSpacing="0.08em"
+          >
+            Detalle de tarea seleccionada
+          </Text>
+          <Text fontSize="sm" fontWeight="800" noOfLines={1}>
+            {task.taskName}
+          </Text>
+        </Box>
+
+        <Button size="xs" variant="ghost" color="white" onClick={onClose}>
+          Cerrar
+        </Button>
+      </Flex>
+
+      <Flex gap={2} wrap="wrap" mb={3}>
+        <Badge colorScheme="purple">{task.taskType}</Badge>
+        <Badge colorScheme="blue">{task.status}</Badge>
+        <Badge colorScheme="gray">{task.robotName}</Badge>
+      </Flex>
+
+      <Box
+        display="grid"
+        gridTemplateColumns="repeat(auto-fit, minmax(145px, 1fr))"
+        gap={2}
+      >
+        <DetailItem label="Inicio" value={formatDateTime(task.startMs)} />
+        <DetailItem label="Fin" value={formatDateTime(task.endMs)} />
+        <DetailItem label="Duración" value={`${task.durationMinutes} min`} />
+        <DetailItem label="Robot UID" value={task.robotUid} />
+        <DetailItem
+          label="Distancia"
+          value={formatDistanceMeters(task.mileage)}
+        />
+        <DetailItem label="Waypoints" value={task.waypointCount} />
+        <DetailItem label="Semana" value={task.weekOffset ?? "-"} />
+        <DetailItem label="ID tarea" value={task.id} />
+        {task.misc && <DetailItem label="Notas" value={task.misc} />}
+      </Box>
+    </Box>
+  );
+}
+
 export default function PredictionTimeline({
   isVisible,
   tasks,
@@ -62,6 +181,7 @@ export default function PredictionTimeline({
   const [devices, setDevices] = useState<DevicePublic[]>([]);
   const [selectedRobot, setSelectedRobot] = useState<string>(ALL_ROBOTS);
   const [cursorMs, setCursorMs] = useState<number | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeOrganizationId) {
@@ -71,7 +191,11 @@ export default function PredictionTimeline({
 
     let cancelled = false;
 
-    DevicesService.getDevicesOwn({ ownerId: activeOrganizationId, skip: 0, limit: 1000 })
+    DevicesService.getDevicesOwn({
+      ownerId: activeOrganizationId,
+      skip: 0,
+      limit: 1000,
+    })
       .then((response) => {
         if (!cancelled) {
           setDevices(response.data ?? []);
@@ -102,7 +226,9 @@ export default function PredictionTimeline({
     return tasks
       .map((task, index) => {
         const startMs = new Date(task.start_time).getTime();
-        const rawEndMs = task.end_time ? new Date(task.end_time).getTime() : NaN;
+        const rawEndMs = task.end_time
+          ? new Date(task.end_time).getTime()
+          : NaN;
 
         if (!Number.isFinite(startMs)) {
           return null;
@@ -134,6 +260,13 @@ export default function PredictionTimeline({
           durationMinutes: getDurationMinutes(startMs, endMs),
           startTime: task.start_time,
           endTime: task.end_time,
+          mileage: Number(task.mileage ?? 0),
+          weekOffset:
+            typeof task.week_offset === "number" ? task.week_offset : null,
+          waypointCount: Array.isArray(task.waypoints)
+            ? task.waypoints.length
+            : 0,
+          misc: task.misc ?? null,
         };
       })
       .filter((task): task is TimelineTask => task !== null)
@@ -204,11 +337,33 @@ export default function PredictionTimeline({
     if (cursorMs === null) return [];
 
     return visibleTasks.filter(
-      (task) => task.startMs <= cursorMs && cursorMs < task.endMs
+      (task) => task.startMs <= cursorMs && cursorMs < task.endMs,
     );
   }, [visibleTasks, cursorMs]);
 
-  if (!isVisible || timelineTasks.length === 0 || !bounds || cursorMs === null) {
+  const selectedTask = useMemo(() => {
+    if (!selectedTaskId) return null;
+
+    return visibleTasks.find((task) => task.id === selectedTaskId) ?? null;
+  }, [visibleTasks, selectedTaskId]);
+
+  useEffect(() => {
+    if (!selectedTaskId) return;
+
+    const stillVisible = visibleTasks.some(
+      (task) => task.id === selectedTaskId,
+    );
+    if (!stillVisible) {
+      setSelectedTaskId(null);
+    }
+  }, [selectedTaskId, visibleTasks]);
+
+  if (
+    !isVisible ||
+    timelineTasks.length === 0 ||
+    !bounds ||
+    cursorMs === null
+  ) {
     return null;
   }
 
@@ -219,7 +374,7 @@ export default function PredictionTimeline({
     ((task.startMs - bounds.min) / totalMs) * 100;
 
   const getWidthPct = (task: TimelineTask) =>
-    Math.max(((task.endMs - task.startMs) / totalMs) * 100, 0.8);
+    Math.max(((task.endMs - task.startMs) / totalMs) * 100, 0);
 
   return (
     <Box
@@ -251,7 +406,8 @@ export default function PredictionTimeline({
             Línea de tiempo de predicción
           </Text>
           <Text fontSize="xs" color="whiteAlpha.700">
-            {visibleTasks.length} tarea(s) visibles · cursor en {formatDateTime(cursorMs)}
+            {visibleTasks.length} tarea(s) visibles · cursor en{" "}
+            {formatDateTime(cursorMs)}
           </Text>
         </Box>
 
@@ -318,7 +474,7 @@ export default function PredictionTimeline({
 
           {visibleRows.map((robot) => {
             const rowTasks = visibleTasks.filter(
-              (task) => task.robotUid === robot.uid
+              (task) => task.robotUid === robot.uid,
             );
 
             return (
@@ -342,42 +498,84 @@ export default function PredictionTimeline({
                 </Box>
 
                 <Box flex="1" position="relative" height="34px">
-                  {rowTasks.map((task) => (
-                    <Box
-                      key={task.id}
-                      position="absolute"
-                      top="5px"
-                      left={`${getLeftPct(task)}%`}
-                      width={`${getWidthPct(task)}%`}
-                      minWidth="42px"
-                      height="24px"
-                      borderRadius="7px"
-                      bg="linear-gradient(135deg, #7C3AED, #C084FC)"
-                      px={2}
-                      display="flex"
-                      alignItems="center"
-                      overflow="hidden"
-                      title={`${task.robotName} · ${task.taskName} · ${formatDateTime(
-                        task.startMs
-                      )} · ${task.durationMinutes} min · ${task.status}`}
-                    >
-                      <Text
-                        fontSize="10px"
-                        fontWeight="700"
-                        whiteSpace="nowrap"
+                  {rowTasks.map((task) => {
+                    const widthPct = getWidthPct(task);
+                    const showLabel = widthPct >= TIMELINE_LABEL_MIN_WIDTH_PCT;
+
+                    return (
+                      <Box
+                        key={task.id}
+                        position="absolute"
+                        top="5px"
+                        left={`${getLeftPct(task)}%`}
+                        width={`${widthPct}%`}
+                        minWidth={
+                          widthPct > 0
+                            ? `${MIN_TIMELINE_BAR_WIDTH_PX}px`
+                            : undefined
+                        }
+                        height="24px"
+                        borderRadius="7px"
+                        bg="linear-gradient(135deg, #7C3AED, #C084FC)"
+                        px={showLabel ? 2 : 0}
+                        display="flex"
+                        alignItems="center"
                         overflow="hidden"
-                        textOverflow="ellipsis"
+                        cursor="pointer"
+                        outline={
+                          selectedTaskId === task.id
+                            ? "2px solid rgba(255,255,255,0.95)"
+                            : "1px solid rgba(255,255,255,0.18)"
+                        }
+                        outlineOffset="0"
+                        boxShadow={
+                          selectedTaskId === task.id
+                            ? "0 0 0 2px rgba(196,181,253,0.35)"
+                            : undefined
+                        }
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Mostrar detalle de ${task.taskName}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedTaskId(task.id);
+                        }}
+                        onKeyDown={(event) =>
+                          handleTaskKeyDown(event, () =>
+                            setSelectedTaskId(task.id),
+                          )
+                        }
+                        title={`${task.robotName} · ${task.taskName} · ${formatDateTime(
+                          task.startMs,
+                        )} · ${task.durationMinutes} min · ${task.status}`}
                       >
-                        {task.taskType}
-                      </Text>
-                    </Box>
-                  ))}
+                        {showLabel && (
+                          <Text
+                            fontSize="10px"
+                            fontWeight="700"
+                            whiteSpace="nowrap"
+                            overflow="hidden"
+                            textOverflow="ellipsis"
+                          >
+                            {task.taskType}
+                          </Text>
+                        )}
+                      </Box>
+                    );
+                  })}
                 </Box>
               </Flex>
             );
           })}
         </Box>
       </Box>
+
+      {selectedTask && (
+        <SelectedTaskDetails
+          task={selectedTask}
+          onClose={() => setSelectedTaskId(null)}
+        />
+      )}
 
       <Box mt={3}>
         <Text fontSize="xs" color="whiteAlpha.700" mb={2}>
@@ -393,11 +591,30 @@ export default function PredictionTimeline({
             {activeTasks.map((task) => (
               <Box
                 key={task.id}
-                border="1px solid rgba(255,255,255,0.14)"
+                border={
+                  selectedTaskId === task.id
+                    ? "1px solid rgba(255,255,255,0.90)"
+                    : "1px solid rgba(255,255,255,0.14)"
+                }
                 borderRadius="10px"
                 px={3}
                 py={2}
-                bg="rgba(255,255,255,0.06)"
+                bg={
+                  selectedTaskId === task.id
+                    ? "rgba(124,58,237,0.28)"
+                    : "rgba(255,255,255,0.06)"
+                }
+                cursor="pointer"
+                role="button"
+                tabIndex={0}
+                aria-label={`Mostrar detalle de ${task.taskName}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedTaskId(task.id);
+                }}
+                onKeyDown={(event) =>
+                  handleTaskKeyDown(event, () => setSelectedTaskId(task.id))
+                }
               >
                 <Flex align="center" gap={2} mb={1}>
                   <Badge colorScheme="purple">{task.taskType}</Badge>
@@ -406,7 +623,12 @@ export default function PredictionTimeline({
                   </Text>
                 </Flex>
 
-                <Flex fontSize="11px" color="whiteAlpha.700" gap={2} align="center">
+                <Flex
+                  fontSize="11px"
+                  color="whiteAlpha.700"
+                  gap={2}
+                  align="center"
+                >
                   <FiClock size={11} />
                   <span>
                     {formatTime(task.startMs)} · {task.durationMinutes} min

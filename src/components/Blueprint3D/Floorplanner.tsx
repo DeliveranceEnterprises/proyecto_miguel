@@ -54,7 +54,9 @@ const Floorplanner: React.FC = () => {
   const [currentMode, setCurrentMode] = useState('MOVE');
   const [showDrawHint, setShowDrawHint] = useState(false);
   const [showObjectFootprints, setShowObjectFootprints] = useState(false);
+  const [showChargerFootprints, setShowChargerFootprints] = useState(false);
   const [objectFootprintCount, setObjectFootprintCount] = useState(0);
+  const [chargerFootprintCount, setChargerFootprintCount] = useState(0);
   const [selectedFootprint, setSelectedFootprint] = useState<SceneItemFootprint | null>(null);
   const overlayRafRef = useRef<number | null>(null);
   const scheduleObjectOverlayDrawRef = useRef<() => void>(() => {});
@@ -64,16 +66,19 @@ const Floorplanner: React.FC = () => {
     if (!blueprint3d) return;
 
     const footprints = drawObjectFootprintsOverlay(blueprint3d, {
-      visible: showObjectFootprints,
+      visible: showObjectFootprints || showChargerFootprints,
       includeLabels: false,
       selectedFootprintId: selectedFootprint?.id ?? null,
-      includeDevices: true,
+      includeObjects: showObjectFootprints,
+      includeDevices: showObjectFootprints,
       includeRobots: false,
+      includeChargers: showChargerFootprints,
     });
 
     footprintsRef.current = footprints;
-    setObjectFootprintCount(footprints.length);
-  }, [blueprint3d, showObjectFootprints, selectedFootprint?.id]);
+    setObjectFootprintCount(footprints.filter((footprint) => !footprint.isCharger).length);
+    setChargerFootprintCount(footprints.filter((footprint) => footprint.isCharger).length);
+  }, [blueprint3d, showObjectFootprints, showChargerFootprints, selectedFootprint?.id]);
 
   const scheduleObjectOverlayDraw = useCallback(() => {
     if (overlayRafRef.current !== null) {
@@ -91,10 +96,10 @@ const Floorplanner: React.FC = () => {
   }, [scheduleObjectOverlayDraw]);
 
   useEffect(() => {
-    if (showObjectFootprints) {
+    if (showObjectFootprints || showChargerFootprints) {
       scheduleObjectOverlayDraw();
     }
-  }, [scheduleObjectOverlayDraw, selectedFootprint?.id, showObjectFootprints]);
+  }, [scheduleObjectOverlayDraw, selectedFootprint?.id, showObjectFootprints, showChargerFootprints]);
 
   useEffect(() => {
     if (blueprint3d?.floorplanner && typeof (window as any).BP3D !== 'undefined') {
@@ -140,14 +145,16 @@ const Floorplanner: React.FC = () => {
     if (!blueprint3d) {
       clearObjectFootprintsOverlay();
       setObjectFootprintCount(0);
+      setChargerFootprintCount(0);
       setSelectedFootprint(null);
       footprintsRef.current = [];
       return;
     }
 
-    if (!showObjectFootprints) {
+    if (!showObjectFootprints && !showChargerFootprints) {
       clearObjectFootprintsOverlay();
       setObjectFootprintCount(0);
+      setChargerFootprintCount(0);
       setSelectedFootprint(null);
       footprintsRef.current = [];
       return;
@@ -186,10 +193,10 @@ const Floorplanner: React.FC = () => {
         overlayRafRef.current = null;
       }
     };
-  }, [blueprint3d, scheduleObjectOverlayDraw, showObjectFootprints]);
+  }, [blueprint3d, scheduleObjectOverlayDraw, showObjectFootprints, showChargerFootprints]);
 
   useEffect(() => {
-    if (!blueprint3d || !showObjectFootprints || currentMode !== 'MOVE') return;
+    if (!blueprint3d || (!showObjectFootprints && !showChargerFootprints) || currentMode !== 'MOVE') return;
 
     const canvas = document.getElementById('floorplanner-canvas') as HTMLCanvasElement | null;
     if (!canvas) return;
@@ -222,7 +229,7 @@ const Floorplanner: React.FC = () => {
     return () => {
       canvas.removeEventListener('click', handleClick);
     };
-  }, [blueprint3d, currentMode, onItemSelect, onItemUnselect, scheduleObjectOverlayDraw, showObjectFootprints]);
+  }, [blueprint3d, currentMode, onItemSelect, onItemUnselect, scheduleObjectOverlayDraw, showObjectFootprints, showChargerFootprints]);
 
   useEffect(() => {
     return () => {
@@ -278,7 +285,18 @@ const Floorplanner: React.FC = () => {
   const handleObjectFootprintsToggle = () => {
     setShowObjectFootprints((current) => {
       const next = !current;
-      if (!next) {
+      if (!next && selectedFootprint && !selectedFootprint.isCharger) {
+        setSelectedFootprint(null);
+        onItemUnselect();
+      }
+      return next;
+    });
+  };
+
+  const handleChargerFootprintsToggle = () => {
+    setShowChargerFootprints((current) => {
+      const next = !current;
+      if (!next && selectedFootprint?.isCharger) {
         setSelectedFootprint(null);
         onItemUnselect();
       }
@@ -325,27 +343,27 @@ const Floorplanner: React.FC = () => {
     marginLeft: '4px',
   } as React.CSSProperties;
 
-  const sliderTrackStyle = {
+  const getSliderTrackStyle = (isActive: boolean) => ({
     width: '36px',
     height: '20px',
     borderRadius: '999px',
-    backgroundColor: showObjectFootprints ? '#3182CE' : '#CBD5E0',
+    backgroundColor: isActive ? '#3182CE' : '#CBD5E0',
     position: 'relative',
     transition: 'background-color 0.2s ease',
     flex: '0 0 auto',
-  } as React.CSSProperties;
+  }) as React.CSSProperties;
 
-  const sliderKnobStyle = {
+  const getSliderKnobStyle = (isActive: boolean) => ({
     position: 'absolute',
     top: '2px',
-    left: showObjectFootprints ? '18px' : '2px',
+    left: isActive ? '18px' : '2px',
     width: '16px',
     height: '16px',
     borderRadius: '50%',
     backgroundColor: '#FFFFFF',
     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.25)',
     transition: 'left 0.2s ease',
-  } as React.CSSProperties;
+  }) as React.CSSProperties;
 
   return (
     <>
@@ -423,13 +441,39 @@ const Floorplanner: React.FC = () => {
             e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
           }}
         >
-          <span style={sliderTrackStyle}>
-            <span style={sliderKnobStyle} />
+          <span style={getSliderTrackStyle(showObjectFootprints)}>
+            <span style={getSliderKnobStyle(showObjectFootprints)} />
           </span>
           <span>
             {showObjectFootprints
               ? `Objetos visibles${objectFootprintCount > 0 ? ` (${objectFootprintCount})` : ''}`
               : 'Mostrar objetos'}
+          </span>
+        </button>
+
+        <button
+          id="toggle-charger-footprints"
+          type="button"
+          aria-pressed={showChargerFootprints}
+          onClick={handleChargerFootprintsToggle}
+          style={objectFootprintsToggleStyle}
+          title="Mostrar u ocultar los cargadores en el plano"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+          }}
+        >
+          <span style={getSliderTrackStyle(showChargerFootprints)}>
+            <span style={getSliderKnobStyle(showChargerFootprints)} />
+          </span>
+          <span>
+            {showChargerFootprints
+              ? `Cargadores robot visibles${chargerFootprintCount > 0 ? ` (${chargerFootprintCount})` : ''}`
+              : 'Mostrar cargadores robot'}
           </span>
         </button>
         
