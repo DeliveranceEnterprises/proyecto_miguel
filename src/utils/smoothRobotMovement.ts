@@ -32,14 +32,22 @@ export type RobotPositionSampleRegistry = Record<string, RobotPositionSample>;
 export type SmoothRobotMoveOptions = {
   /** Duration used until there is a measured interval between backend updates. */
   defaultDurationMs?: number;
+
+  /** Fixed duration for the whole movement. If set, it overrides automatic timing. */
+  fixedDurationMs?: number;
+
   /** Avoid almost-instant animations when the backend sends updates very quickly. */
   minDurationMs?: number;
+
   /** Avoid very slow catch-up when one backend update arrives late. */
   maxDurationMs?: number;
+
   /** Ignore tiny coordinate jitter. Coordinates use the same units as the scene. */
   minMovement?: number;
+
   /** Put the robot directly on the first backend position instead of animating from a stale saved position. */
   snapFirstUpdate?: boolean;
+
   /** Optional A* / navigation path to follow instead of the direct segment. */
   path?: RobotPathPoint[] | null;
 };
@@ -239,18 +247,25 @@ export function scheduleSmoothRobotMove(args: {
     return false;
   }
 
-  const measuredInterval = lastSample ? now - lastSample.receivedAt : options.defaultDurationMs;
-  const baseDurationMs = clamp(
-    Number.isFinite(measuredInterval) && measuredInterval > 0
-      ? measuredInterval
-      : options.defaultDurationMs,
-    options.minDurationMs,
-    options.maxDurationMs
-  );
-  const pathScale = directDistance > options.minMovement
-    ? clamp(totalDistance / directDistance, 1, 3)
-    : 1;
-  const durationMs = clamp(baseDurationMs * pathScale, options.minDurationMs, options.maxDurationMs);
+const fixedDurationMs = Number(options.fixedDurationMs);
+
+const measuredInterval = lastSample ? now - lastSample.receivedAt : options.defaultDurationMs;
+const baseDurationMs = clamp(
+  Number.isFinite(measuredInterval) && measuredInterval > 0
+    ? measuredInterval
+    : options.defaultDurationMs,
+  options.minDurationMs,
+  options.maxDurationMs
+);
+
+const pathScale = directDistance > options.minMovement
+  ? clamp(totalDistance / directDistance, 1, 3)
+  : 1;
+
+const durationMs =
+  Number.isFinite(fixedDurationMs) && fixedDurationMs > 0
+    ? Math.max(options.minDurationMs, fixedDurationMs)
+    : clamp(baseDurationMs * pathScale, options.minDurationMs, options.maxDurationMs);
 
   args.moves[args.uid] = {
     item: args.item,

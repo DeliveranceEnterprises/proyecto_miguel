@@ -20,6 +20,7 @@ import { Route as LayoutIndexImport } from './routes/_layout/index'
 import { Route as LayoutSite22Import } from './routes/_layout/site22'
 import { Route as LayoutSiteImport } from './routes/_layout/site'
 import { Route as LayoutSettingsImport } from './routes/_layout/settings'
+import { Route as LayoutPredictionsAdvancedImport } from './routes/_layout/predictions-advanced'
 import { Route as LayoutPredictionsImport } from './routes/_layout/predictions'
 import { Route as LayoutAdminImport } from './routes/_layout/admin'
 
@@ -70,6 +71,11 @@ const LayoutSettingsRoute = LayoutSettingsImport.update({
   getParentRoute: () => LayoutRoute,
 } as any)
 
+const LayoutPredictionsAdvancedRoute = LayoutPredictionsAdvancedImport.update({
+  path: '/predictions-advanced',
+  getParentRoute: () => LayoutRoute,
+} as any)
+
 const LayoutPredictionsRoute = LayoutPredictionsImport.update({
   path: '/predictions',
   getParentRoute: () => LayoutRoute,
@@ -112,6 +118,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutPredictionsImport
       parentRoute: typeof LayoutImport
     }
+    '/_layout/predictions-advanced': {
+      preLoaderRoute: typeof LayoutPredictionsAdvancedImport
+      parentRoute: typeof LayoutImport
+    }
     '/_layout/settings': {
       preLoaderRoute: typeof LayoutSettingsImport
       parentRoute: typeof LayoutImport
@@ -137,6 +147,7 @@ export const routeTree = rootRoute.addChildren([
   LayoutRoute.addChildren([
     LayoutAdminRoute,
     LayoutPredictionsRoute,
+    LayoutPredictionsAdvancedRoute,
     LayoutSettingsRoute,
     LayoutSiteRoute,
     LayoutSite22Route,

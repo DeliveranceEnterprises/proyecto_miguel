@@ -16,6 +16,8 @@ import {
   type RobotTargetPreviewRegistry,
 } from '../utils/robotTargetPreview';
 
+const REAL_MODE_MOVEMENT_SECONDS = 5;
+
 const POLL_INTERVAL = 500;
 
 const ROBOT_PATH_OPTIONS = {
@@ -96,7 +98,7 @@ export function useDeviceSync(
             currentZ: frame.currentZ,
             targetX: frame.targetX,
             targetZ: frame.targetZ,
-            path: frame.remainingPath,
+            path: frame.path,
             previews: targetPreviewsRef.current,
           });
         },
@@ -186,6 +188,7 @@ export function useDeviceSync(
             samples: lastKnownRef.current,
             options: {
               defaultDurationMs: POLL_INTERVAL,
+              fixedDurationMs: isRealMode ? REAL_MODE_MOVEMENT_SECONDS * 1000 : undefined,
               minDurationMs: 120,
               maxDurationMs: 1200,
               minMovement: 0.001,

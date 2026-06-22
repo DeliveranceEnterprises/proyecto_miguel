@@ -35,6 +35,20 @@ export interface PredictWeekResponse {
   data: PredictedTaskRecord[];
 }
 
+export interface PredictionComparisonData {
+  ok: boolean;
+  data_source: "file" | "api";
+  base_file?: string | null;
+  predicted_file?: string | null;
+  combined_file?: string | null;
+  base_count: number;
+  predicted_count: number;
+  combined_count: number;
+  base: PredictedTaskRecord[];
+  predicted: PredictedTaskRecord[];
+  combined: PredictedTaskRecord[];
+}
+
 export function saveLastPredictionResponse(response: PredictWeekResponse): void {
   try {
     localStorage.setItem(
@@ -110,4 +124,47 @@ export async function getPredictedTasks(): Promise<PredictedTaskRecord[]> {
   }
 
   return Array.isArray(payload) ? payload : [];
+}
+
+export async function getPredictionComparisonData(
+  dataSource: "file" | "api" = "file"
+): Promise<PredictionComparisonData> {
+  const token = localStorage.getItem("access_token");
+  const base = OpenAPI.BASE ?? "";
+  const params = new URLSearchParams({ data_source: dataSource });
+
+  const response = await fetch(
+    `${base}/api/v1/prediction/comparison_data?${params.toString()}`,
+    {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  );
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.detail ?? "Error al cargar la comparativa avanzada"
+    );
+  }
+
+  if (!payload || !Array.isArray(payload.base) || !Array.isArray(payload.predicted)) {
+    throw new Error("La respuesta de comparativa no tiene el formato esperado");
+  }
+
+  return {
+    ok: Boolean(payload.ok),
+    data_source: payload.data_source === "api" ? "api" : "file",
+    base_file: payload.base_file ?? null,
+    predicted_file: payload.predicted_file ?? null,
+    combined_file: payload.combined_file ?? null,
+    base_count: Number(payload.base_count ?? payload.base.length),
+    predicted_count: Number(payload.predicted_count ?? payload.predicted.length),
+    combined_count: Number(payload.combined_count ?? payload.combined?.length ?? 0),
+    base: payload.base,
+    predicted: payload.predicted,
+    combined: Array.isArray(payload.combined) ? payload.combined : [],
+  };
 }
